@@ -1,0 +1,418 @@
+/* Obsidian-like theme variables. Names mirror Obsidian's own so the mapping stays obvious. */
+:root {
+  --background-primary: #ffffff;
+  --background-primary-alt: #fafafa;
+  --background-secondary: #f2f3f5;
+  --background-modifier-border: #dcddde;
+  --background-modifier-hover: rgba(0, 0, 0, 0.05);
+  --text-normal: #222222;
+  --text-muted: #5c5c5c;
+  --text-faint: #999999;
+  --text-accent: #705dcf;
+  --code-background: rgba(0, 0, 0, 0.04);
+  --canvas-background: var(--background-primary-alt);
+  --canvas-dot-pattern: #d4d5d8;
+  --canvas-node-background: var(--background-primary);
+  --canvas-node-border: var(--background-modifier-border);
+  --canvas-edge-color: #7a7a7a;
+  --canvas-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --canvas-color-tint: 12%;
+}
+
+[data-theme="dark"] {
+  --background-primary: #1e1e1e;
+  --background-primary-alt: #161616;
+  --background-secondary: #262626;
+  --background-modifier-border: #363636;
+  --background-modifier-hover: rgba(255, 255, 255, 0.075);
+  --text-normal: #dadada;
+  --text-muted: #b3b3b3;
+  --text-faint: #7a7a7a;
+  --text-accent: #a882ff;
+  --code-background: rgba(255, 255, 255, 0.06);
+  --canvas-dot-pattern: #333333;
+  --canvas-edge-color: #999999;
+  --canvas-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --canvas-color-tint: 18%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif;
+  color: var(--text-normal);
+  background: var(--canvas-background);
+}
+
+/* ---------- canvas surface ---------- */
+
+.canvas-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.canvas-wrapper.is-panning {
+  cursor: grabbing;
+}
+
+.canvas-background {
+  position: absolute;
+  inset: 0;
+  background-color: var(--canvas-background);
+  background-image: radial-gradient(circle, var(--canvas-dot-pattern) 1px, transparent 1px);
+}
+
+.canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+
+.canvas-edges {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.canvas-edge-line {
+  fill: none;
+  stroke: var(--edge-color, var(--canvas-edge-color));
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.canvas-edge-arrow {
+  fill: var(--edge-color, var(--canvas-edge-color));
+}
+
+.canvas-edge-label {
+  fill: var(--text-muted);
+  font-size: 13px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: var(--canvas-background);
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+/* ---------- nodes ---------- */
+
+.canvas-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--node-color, var(--canvas-node-border));
+  border-radius: 8px;
+  background-color: var(--canvas-node-background);
+  box-shadow: var(--canvas-shadow);
+  z-index: 2;
+}
+
+.canvas-node[data-colored="true"] {
+  background-color: color-mix(in srgb, var(--node-color) var(--canvas-color-tint), var(--canvas-node-background));
+}
+
+/*
+ * Obsidian heads a file card with the note's name, inside the card — matching
+ * its .embed-title: body size, semibold, one line with an ellipsis.
+ */
+.canvas-node-title {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 10px 16px 8px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/*
+ * Inline-sized on purpose: the clickable area is the title text plus its icon,
+ * so the empty rest of the row stays inert and clicking it never navigates.
+ */
+.canvas-node-title-link {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  max-width: 100%;
+  color: inherit;
+  text-decoration: none;
+}
+
+.canvas-node-title-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.canvas-node-title-icon {
+  flex: none;
+  width: 0.8em;
+  height: 0.8em;
+  opacity: 0.45;
+}
+
+.canvas-node-title-link:hover {
+  color: var(--text-accent);
+}
+
+.canvas-node-title-link:hover .canvas-node-title-text {
+  text-decoration: underline;
+}
+
+.canvas-node-title-link:hover .canvas-node-title-icon {
+  opacity: 1;
+}
+
+.canvas-node-content {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 16px;
+  overflow: auto;
+  border-radius: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  overscroll-behavior: contain;
+}
+
+/* The title already supplies the top margin. */
+.canvas-node-title + .canvas-node-content {
+  padding-top: 0;
+}
+
+/* Images and iframes fill the card instead of sitting in a text column. */
+.canvas-node-content[data-fill="true"] {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* A group's name sits above its frame — the only label drawn outside a card. */
+.canvas-node-label {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  max-width: 100%;
+  margin-bottom: 4px;
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.canvas-node[data-type="group"] {
+  z-index: 0;
+  border-width: 2px;
+  border-radius: 4px;
+  background-color: color-mix(in srgb, var(--node-color, var(--canvas-node-border)) 8%, transparent);
+  box-shadow: none;
+}
+
+.canvas-node-embed {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: var(--background-primary);
+}
+
+.canvas-node-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: contain;
+}
+
+.canvas-node-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 16px;
+  color: var(--text-faint);
+  font-size: 14px;
+  text-align: center;
+  word-break: break-all;
+}
+
+/* ---------- markdown inside a node ---------- */
+
+.markdown-preview > :first-child {
+  margin-top: 0;
+}
+
+.markdown-preview > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-preview h1 { font-size: 1.5em; }
+.markdown-preview h2 { font-size: 1.3em; }
+.markdown-preview h3 { font-size: 1.15em; }
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 { font-size: 1em; }
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  margin: 1.2em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.markdown-preview p,
+.markdown-preview ul,
+.markdown-preview ol,
+.markdown-preview blockquote {
+  margin: 0 0 0.9em;
+}
+
+.markdown-preview ul,
+.markdown-preview ol {
+  padding-left: 1.6em;
+}
+
+.markdown-preview li {
+  margin-bottom: 0.25em;
+}
+
+.markdown-preview blockquote {
+  padding-left: 1em;
+  border-left: 3px solid var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.markdown-preview hr {
+  height: 0;
+  margin: 1.2em 0;
+  border: 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.markdown-preview code {
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background: var(--code-background);
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.markdown-preview pre {
+  margin: 0 0 0.9em;
+  padding: 0.8em 1em;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: var(--code-background);
+}
+
+.markdown-preview pre code {
+  padding: 0;
+  background: none;
+}
+
+.markdown-preview table {
+  margin-bottom: 0.9em;
+  border-collapse: collapse;
+}
+
+.markdown-preview th,
+.markdown-preview td {
+  padding: 0.4em 0.7em;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.markdown-preview img {
+  max-width: 100%;
+}
+
+.markdown-preview a {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.markdown-preview a:hover {
+  text-decoration: underline;
+}
+
+.markdown-preview .internal-link {
+  color: var(--text-accent);
+  cursor: default;
+  text-decoration-color: color-mix(in srgb, var(--text-accent) 40%, transparent);
+}
+
+.markdown-preview .internal-link.is-unresolved {
+  color: color-mix(in srgb, var(--text-accent) 55%, var(--text-faint));
+}
+
+.markdown-preview .katex-display {
+  margin: 0.8em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* ---------- controls ---------- */
+
+.canvas-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  box-shadow: var(--canvas-shadow);
+}
+
+.canvas-control-item {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.canvas-control-item:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.canvas-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  padding: 12px 20px;
+  transform: translate(-50%, -50%);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: 14px;
+}

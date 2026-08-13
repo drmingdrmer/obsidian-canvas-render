@@ -1,0 +1,11 @@
+{
+	"nodes":[
+		{"id":"63e2a9a8848fb5bd","x":-402,"y":-460,"width":422,"height":280,"type":"file","file":"pages/Mathematics-数学/Field theory/Separable extension.md"},
+		{"id":"f3f12d8d90f72b67","x":340,"y":-500,"width":440,"height":180,"type":"file","file":"pages/Mathematics-数学/Repeated root 重根.md"},
+		{"id":"bb80bf4d1800838f","x":320,"y":-260,"width":460,"height":320,"type":"file","file":"pages/Mathematics-数学/形式导数.md"}
+	],
+	"edges":[
+		{"id":"fe36dab000e14c0d","fromNode":"63e2a9a8848fb5bd","fromSide":"right","toNode":"f3f12d8d90f72b67","toSide":"left"},
+		{"id":"2a61244ed7a2b7ae","fromNode":"63e2a9a8848fb5bd","fromSide":"right","toNode":"bb80bf4d1800838f","toSide":"left"}
+	]
+}

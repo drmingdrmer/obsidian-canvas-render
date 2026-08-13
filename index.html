@@ -1,0 +1,50 @@
+<!doctype html>
+<!--
+  Obsidian-like renderer for JSON Canvas (.canvas) files.
+
+  Run:  ./serve.sh          then open http://localhost:8000/
+  A web server is required: the page fetches the .canvas file and the notes it
+  embeds, which file:// blocks.
+
+  Which canvas to render is a URL query parameter:
+
+    ?canvas=<path>    the .canvas file, relative to this page
+    &vault=<path>     the vault root that file nodes resolve against;
+                      defaults to the directory holding the canvas file
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Canvas Render</title>
+<link rel="icon" href="data:,">
+
+<link rel="stylesheet" href="lib/katex/katex.min.css">
+<link rel="stylesheet" href="canvas-render.css">
+</head>
+<body>
+
+<div class="canvas-wrapper" id="wrapper">
+  <div class="canvas-background" id="background"></div>
+
+  <div class="canvas" id="canvas">
+    <svg class="canvas-edges" id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div class="canvas-status" id="status" hidden></div>
+
+  <div class="canvas-controls">
+    <button class="canvas-control-item" id="zoom-out" title="缩小">&minus;</button>
+    <button class="canvas-control-item" id="zoom-reset" title="缩放到 100%">100%</button>
+    <button class="canvas-control-item" id="zoom-in" title="放大">&plus;</button>
+    <button class="canvas-control-item" id="zoom-fit" title="适应画布">适应</button>
+    <button class="canvas-control-item" id="theme-toggle" title="切换明暗主题">☾</button>
+  </div>
+</div>
+
+<script src="lib/marked.min.js"></script>
+<script src="lib/katex/katex.min.js"></script>
+<script src="canvas-render.js"></script>
+
+</body>
+</html>
