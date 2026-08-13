@@ -69,7 +69,7 @@ Block-reference subpaths `#^blockid` render the whole document, and `[[wikilinks
 
 ## Interaction
 
-Pressing a card's title row moves the card, and its edges follow. Pressing a group's frame moves the group together with every card the frame encloses, fixed at the moment the drag starts. Positions are not written back to the file: a reload restores the layout the `.canvas` stores. A text card is moved by its header strip; a text card that has no header — its content reaches the border — stays where the file puts it.
+A card moves by its title row alone, and its edges follow; every other part of it is left to select, scroll and click. Pressing a group's frame moves the group together with every card the frame encloses, fixed at the moment the drag starts. Positions are not written back to the file: a reload restores the layout the `.canvas` stores. A text card is moved by its header strip; a text card that has no header — its content reaches the border — stays where the file puts it.
 
 Dragging a card's body selects text rather than moving the card, and a card whose content overflows scrolls on its own. Dragging anywhere else pans. A plain wheel pans; ⌘/Ctrl + wheel or a trackpad pinch zooms.
 

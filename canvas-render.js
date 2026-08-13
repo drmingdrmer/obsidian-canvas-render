@@ -844,9 +844,21 @@ function placeNode(node, x, y) {
 }
 
 /**
- * A press on a card's frame moves the card. The wrapper never sees that press,
- * so the background still pans, and node content and title links are left to
- * scroll, select and navigate as before.
+ * Only a title bar moves a card: the rest of it has to stay free for selecting
+ * text, scrolling and following links. A group is all frame and holds no
+ * content of its own, so any point on it drags.
+ */
+function startsDrag(target, node) {
+  if (!(target instanceof Element)) return false
+  if (node.type === 'group') return true
+  if (isInteractiveTarget(target)) return false
+  return target.closest('.canvas-node-title, .canvas-node-header') !== null
+}
+
+/**
+ * A press on a card's title bar moves the card. The wrapper never sees that
+ * press, so the background still pans, and everything else on the card is left
+ * to scroll, select and navigate as before.
  */
 function installNodeDrag(node, el) {
   let dragPointerId = null
@@ -856,7 +868,7 @@ function installNodeDrag(node, el) {
 
   el.addEventListener('pointerdown', event => {
     if (event.button !== 0) return
-    if (isInteractiveTarget(event.target)) return
+    if (!startsDrag(event.target, node)) return
 
     dragPointerId = event.pointerId
     originX = event.clientX
