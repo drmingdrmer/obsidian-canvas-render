@@ -531,6 +531,44 @@ function createTitleElement(node) {
   return titleEl
 }
 
+/** A line that opens a block: either a heading already, or a construct the next lines continue. */
+const BLOCK_OPENER = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~|\||---)/
+
+/** `===` or `---` under a line of prose, which makes that line a heading. */
+const SETEXT_UNDERLINE = /^(=+|-+)\s*$/
+
+/**
+ * Text nodes are commonly written title first, so the first line becomes the
+ * card's header — but only when it is a paragraph in its own right. A line that
+ * opens a list, a quote, a fence or a heading belongs to what follows it, and
+ * lifting it out would leave both halves wrong.
+ */
+function splitTextNode(text) {
+  const source = text || ''
+  const lines = source.split('\n')
+  const firstLine = lines[0].trim()
+  const body = lines.slice(1).join('\n')
+
+  const wholeCardWouldBeHeader = body.trim() === ''
+  if (firstLine === '' || wholeCardWouldBeHeader) return { header: null, body: source }
+  if (BLOCK_OPENER.test(firstLine)) return { header: null, body: source }
+  if (SETEXT_UNDERLINE.test(lines[1].trim())) return { header: null, body: source }
+
+  return { header: firstLine, body: body }
+}
+
+/**
+ * The promoted line, drawn as a filled strip. A file card's title row is
+ * transparent and holds links to the note, so the two headers stay apart at a
+ * glance: this one is the card's own first sentence, not a name to click.
+ */
+function createTextHeaderElement(line) {
+  const headerEl = document.createElement('div')
+  headerEl.className = 'canvas-node-header'
+  headerEl.appendChild(markdownElement(renderMarkdown(line)))
+  return headerEl
+}
+
 /** Group frames carry their name above the frame; nothing sits inside them. */
 function createGroupLabelElement(node) {
   const labelEl = document.createElement('div')
@@ -561,12 +599,15 @@ function createNodeElement(node) {
 
   if (node.type === 'file' || node.type === 'link') el.appendChild(createTitleElement(node))
 
+  const text = node.type === 'text' ? splitTextNode(node.text) : null
+  if (text !== null && text.header !== null) el.appendChild(createTextHeaderElement(text.header))
+
   const contentEl = document.createElement('div')
   contentEl.className = 'canvas-node-content'
   el.appendChild(contentEl)
 
   if (node.type === 'text') {
-    contentEl.replaceChildren(markdownElement(renderMarkdown(node.text || '')))
+    contentEl.replaceChildren(markdownElement(renderMarkdown(text.body)))
   } else if (node.type === 'file') {
     fillFileNode(contentEl, node)
   } else if (node.type === 'link') {

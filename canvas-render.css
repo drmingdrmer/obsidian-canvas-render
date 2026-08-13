@@ -192,6 +192,25 @@ body {
   opacity: 1;
 }
 
+/*
+ * A text card heads itself with its own first line. The strip is filled and
+ * divided, where a file card's title row is transparent and carries links, so
+ * the two kinds of card stay apart even when the text is too small to read.
+ */
+.canvas-node-header {
+  flex: none;
+  padding: 10px 16px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--background-modifier-border);
+  border-radius: inherit;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background: var(--background-modifier-hover);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .canvas-node-content {
   flex: 1;
   min-height: 0;

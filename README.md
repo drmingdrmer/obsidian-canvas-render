@@ -63,11 +63,13 @@ Nodes: `text`, `file`, `link`, `group`.
 Edges: `fromSide` / `toSide` (both optional), the `fromEnd` / `toEnd` arrow switches, `label`, `color`.
 Colors: Obsidian's six presets (`"1"`–`"6"`) and custom hex values.
 
+A text card whose first line is a paragraph with more text under it draws that line as a header strip and keeps it out of the body — a filled strip, where a file card's title row is transparent and carries links, so the two kinds of card stay apart. A first line that opens a heading, list, quote, code fence or table belongs to what follows it and stays in the body, rendered as written. Obsidian heads text cards with nothing at all; this is a deliberate difference, and the strip doubles as the card's drag handle.
+
 Block-reference subpaths `#^blockid` render the whole document, and `[[wikilinks]]` are styled but not navigable.
 
 ## Interaction
 
-Pressing a card's title row moves the card, and its edges follow. Pressing a group's frame moves the group together with every card the frame encloses, fixed at the moment the drag starts. Positions are not written back to the file: a reload restores the layout the `.canvas` stores. A text card has no title row and its content reaches the border, so it stays where the file puts it.
+Pressing a card's title row moves the card, and its edges follow. Pressing a group's frame moves the group together with every card the frame encloses, fixed at the moment the drag starts. Positions are not written back to the file: a reload restores the layout the `.canvas` stores. A text card is moved by its header strip; a text card that has no header — its content reaches the border — stays where the file puts it.
 
 Dragging a card's body selects text rather than moving the card, and a card whose content overflows scrolls on its own. Dragging anywhere else pans. A plain wheel pans; ⌘/Ctrl + wheel or a trackpad pinch zooms.
 
