@@ -83,6 +83,9 @@ const view = { x: 0, y: 0, zoom: 1 }
 /** Read from the URL query once at startup, then fixed for the life of the page. */
 const config = { vaultRoot: '' }
 
+/** The drawn canvas: node data, the element each node was drawn as, and the edges on it. */
+const layout = { nodes: [], elements: new Map(), edgesByNode: new Map() }
+
 // --------------------------------------------------------------------- theme
 
 function preferredTheme() {
@@ -577,50 +580,67 @@ function createNodeElement(node) {
 
 // -------------------------------------------------------------- edge element
 
-function createEdgeElements(edge, fromNode, toNode) {
-  const fromSide = edge.fromSide || inferSide(fromNode, toNode, true)
-  const toSide = edge.toSide || inferSide(toNode, fromNode, false)
-  const geometry = edgeGeometry(fromNode, fromSide, toNode, toSide)
+function createEdgeArrow() {
+  const arrow = document.createElementNS(SVG_NAMESPACE, 'polygon')
+  arrow.setAttribute('class', 'canvas-edge-arrow')
+  return arrow
+}
 
+/**
+ * Builds the group and its children with no coordinates in them, and returns
+ * the record `layoutEdge` writes those into. Holding on to the child elements
+ * is what spares a moved node a DOM query per pointer move.
+ */
+function createEdgeElements(edge, fromNode, toNode) {
   const group = document.createElementNS(SVG_NAMESPACE, 'g')
   const color = resolveColor(edge.color)
   if (color) group.style.setProperty('--edge-color', color)
 
   const path = document.createElementNS(SVG_NAMESPACE, 'path')
-  const { start, startControl, endControl, end } = geometry
-  path.setAttribute(
-    'd',
-    `M ${start.x} ${start.y} C ${startControl.x} ${startControl.y}, ${endControl.x} ${endControl.y}, ${end.x} ${end.y}`,
-  )
   path.setAttribute('class', 'canvas-edge-line')
   group.appendChild(path)
 
   // Spec default: no arrow at the source, an arrow at the target.
-  if (edge.fromEnd === 'arrow') {
-    const arrow = document.createElementNS(SVG_NAMESPACE, 'polygon')
-    arrow.setAttribute('points', arrowPoints(geometry.start, geometry.startNormal))
-    arrow.setAttribute('class', 'canvas-edge-arrow')
-    group.appendChild(arrow)
-  }
+  const startArrow = edge.fromEnd === 'arrow' ? createEdgeArrow() : null
+  const endArrow = edge.toEnd === 'none' ? null : createEdgeArrow()
+  if (startArrow) group.appendChild(startArrow)
+  if (endArrow) group.appendChild(endArrow)
 
-  if (edge.toEnd !== 'none') {
-    const arrow = document.createElementNS(SVG_NAMESPACE, 'polygon')
-    arrow.setAttribute('points', arrowPoints(geometry.end, geometry.endNormal))
-    arrow.setAttribute('class', 'canvas-edge-arrow')
-    group.appendChild(arrow)
-  }
-
+  let label = null
   if (edge.label) {
-    const midpoint = bezierMidpoint(geometry)
-    const text = document.createElementNS(SVG_NAMESPACE, 'text')
-    text.setAttribute('x', midpoint.x)
-    text.setAttribute('y', midpoint.y)
-    text.setAttribute('class', 'canvas-edge-label')
-    text.textContent = edge.label
-    group.appendChild(text)
+    label = document.createElementNS(SVG_NAMESPACE, 'text')
+    label.setAttribute('class', 'canvas-edge-label')
+    label.textContent = edge.label
+    group.appendChild(label)
   }
 
-  return group
+  return { group, edge, fromNode, toNode, path, startArrow, endArrow, label }
+}
+
+/** Writes the geometry the endpoints' current positions imply into an existing edge. */
+function layoutEdge(record) {
+  const { edge, fromNode, toNode } = record
+  const fromSide = edge.fromSide || inferSide(fromNode, toNode, true)
+  const toSide = edge.toSide || inferSide(toNode, fromNode, false)
+  const geometry = edgeGeometry(fromNode, fromSide, toNode, toSide)
+
+  const { start, startControl, endControl, end } = geometry
+  record.path.setAttribute(
+    'd',
+    `M ${start.x} ${start.y} C ${startControl.x} ${startControl.y}, ${endControl.x} ${endControl.y}, ${end.x} ${end.y}`,
+  )
+
+  if (record.startArrow) {
+    record.startArrow.setAttribute('points', arrowPoints(start, geometry.startNormal))
+  }
+  if (record.endArrow) {
+    record.endArrow.setAttribute('points', arrowPoints(end, geometry.endNormal))
+  }
+
+  if (!record.label) return
+  const midpoint = bezierMidpoint(geometry)
+  record.label.setAttribute('x', midpoint.x)
+  record.label.setAttribute('y', midpoint.y)
 }
 
 // ------------------------------------------------------------------ viewport
@@ -678,20 +698,23 @@ function isInsideNodeContent(target) {
   return target instanceof Element && target.closest('.canvas-node-content') !== null
 }
 
-/** Card titles are links, so a press on one must not be swallowed by a pan. */
-function startsPan(target) {
-  if (!(target instanceof Element)) return true
-  return target.closest('.canvas-node-content, .canvas-node-title-link') === null
+/**
+ * Card content scrolls and selects text, and a card title is a link: a press on
+ * either neither pans the viewport nor drags the card it belongs to.
+ */
+function isInteractiveTarget(target) {
+  if (!(target instanceof Element)) return false
+  return target.closest('.canvas-node-content, .canvas-node-title-link') !== null
 }
 
-function installViewportControls(bounds) {
+function installViewportControls() {
   let panPointerId = null
   let panOriginX = 0
   let panOriginY = 0
 
   wrapperEl.addEventListener('pointerdown', event => {
     if (event.button !== 0 && event.button !== 1) return
-    if (event.button === 0 && !startsPan(event.target)) return
+    if (event.button === 0 && isInteractiveTarget(event.target)) return
 
     panPointerId = event.pointerId
     panOriginX = event.clientX - view.x
@@ -741,26 +764,96 @@ function installViewportControls(bounds) {
   zoomInEl.addEventListener('click', () => zoomAroundCentre(ZOOM_STEP))
   zoomOutEl.addEventListener('click', () => zoomAroundCentre(1 / ZOOM_STEP))
   zoomResetEl.addEventListener('click', () => zoomAroundCentre(1 / view.zoom))
-  zoomFitEl.addEventListener('click', () => fitToContent(bounds))
+  // Recomputed at click time: a drag leaves the bounds captured at load stale.
+  zoomFitEl.addEventListener('click', () => fitToContent(contentBounds(layout.nodes)))
+}
+
+// ------------------------------------------------------------------ dragging
+
+/**
+ * What a press on this node moves. Obsidian carries a group's contents with the
+ * frame, and the file format records no membership, so a group takes every node
+ * whose box lies inside its own — fixed when the drag starts, so a node the
+ * frame merely passes over is not picked up along the way.
+ */
+function movedNodes(node) {
+  if (node.type !== 'group') return [node]
+
+  const contained = layout.nodes.filter(other => {
+    if (other === node) return false
+    const insideX = other.x >= node.x && other.x + other.width <= node.x + node.width
+    const insideY = other.y >= node.y && other.y + other.height <= node.y + node.height
+    return insideX && insideY
+  })
+  return [node].concat(contained)
+}
+
+/** Moves a node in the data and in the DOM, and re-routes the edges attached to it. */
+function placeNode(node, x, y) {
+  node.x = x
+  node.y = y
+
+  const el = layout.elements.get(node.id)
+  el.style.left = `${x}px`
+  el.style.top = `${y}px`
+
+  const attached = layout.edgesByNode.get(node.id)
+  if (!attached) return
+  for (const record of attached) layoutEdge(record)
+}
+
+/**
+ * A press on a card's frame moves the card. The wrapper never sees that press,
+ * so the background still pans, and node content and title links are left to
+ * scroll, select and navigate as before.
+ */
+function installNodeDrag(node, el) {
+  let dragPointerId = null
+  let originX = 0
+  let originY = 0
+  let dragged = []
+
+  el.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return
+    if (isInteractiveTarget(event.target)) return
+
+    dragPointerId = event.pointerId
+    originX = event.clientX
+    originY = event.clientY
+    dragged = movedNodes(node).map(moved => ({ node: moved, startX: moved.x, startY: moved.y }))
+
+    el.setPointerCapture(dragPointerId)
+    el.classList.add('is-dragging')
+    event.stopPropagation()
+    event.preventDefault()
+  })
+
+  el.addEventListener('pointermove', event => {
+    if (event.pointerId !== dragPointerId) return
+
+    // A screen pixel is one canvas unit divided by the zoom factor.
+    const dx = (event.clientX - originX) / view.zoom
+    const dy = (event.clientY - originY) / view.zoom
+    for (const item of dragged) placeNode(item.node, item.startX + dx, item.startY + dy)
+
+    // A card dragged past the layer's edge would have its edges clipped.
+    resizeEdgeLayer(contentBounds(layout.nodes))
+  })
+
+  const endDrag = event => {
+    if (event.pointerId !== dragPointerId) return
+    el.releasePointerCapture(dragPointerId)
+    el.classList.remove('is-dragging')
+    dragPointerId = null
+  }
+  el.addEventListener('pointerup', endDrag)
+  el.addEventListener('pointercancel', endDrag)
 }
 
 // ------------------------------------------------------------------- drawing
 
-function drawCanvas(data) {
-  if (!Array.isArray(data.nodes)) throw new TypeError('canvas file has no "nodes" array')
-
-  const nodes = data.nodes
-  const edges = Array.isArray(data.edges) ? data.edges : []
-  const nodesById = new Map(nodes.map(node => [node.id, node]))
-
-  // Groups first so they sit behind; within each class the file order is the z-order.
-  const groups = nodes.filter(node => node.type === 'group')
-  const others = nodes.filter(node => node.type !== 'group')
-  for (const node of groups.concat(others)) {
-    canvasEl.appendChild(createNodeElement(node))
-  }
-
-  const bounds = contentBounds(nodes)
+/** The SVG layer keeps a margin around the nodes so bowed edges are not clipped. */
+function resizeEdgeLayer(bounds) {
   const layerX = bounds.minX - EDGE_LAYER_MARGIN
   const layerY = bounds.minY - EDGE_LAYER_MARGIN
   const layerWidth = bounds.maxX - bounds.minX + EDGE_LAYER_MARGIN * 2
@@ -771,6 +864,36 @@ function drawCanvas(data) {
   edgesEl.setAttribute('width', layerWidth)
   edgesEl.setAttribute('height', layerHeight)
   edgesEl.setAttribute('viewBox', `${layerX} ${layerY} ${layerWidth} ${layerHeight}`)
+}
+
+/** Lists the edge under both its endpoints, so a moved node finds what to re-route. */
+function indexEdge(record) {
+  for (const node of [record.fromNode, record.toNode]) {
+    const attached = layout.edgesByNode.get(node.id)
+    if (attached) attached.push(record)
+    else layout.edgesByNode.set(node.id, [record])
+  }
+}
+
+function drawCanvas(data) {
+  if (!Array.isArray(data.nodes)) throw new TypeError('canvas file has no "nodes" array')
+
+  const nodes = data.nodes
+  const edges = Array.isArray(data.edges) ? data.edges : []
+  const nodesById = new Map(nodes.map(node => [node.id, node]))
+  layout.nodes = nodes
+
+  // Groups first so they sit behind; within each class the file order is the z-order.
+  const groups = nodes.filter(node => node.type === 'group')
+  const others = nodes.filter(node => node.type !== 'group')
+  for (const node of groups.concat(others)) {
+    const el = createNodeElement(node)
+    layout.elements.set(node.id, el)
+    installNodeDrag(node, el)
+    canvasEl.appendChild(el)
+  }
+
+  resizeEdgeLayer(contentBounds(nodes))
 
   for (const edge of edges) {
     const fromNode = nodesById.get(edge.fromNode)
@@ -779,10 +902,12 @@ function drawCanvas(data) {
       console.warn(`edge ${edge.id} references a missing node`, edge)
       continue
     }
-    edgesEl.appendChild(createEdgeElements(edge, fromNode, toNode))
-  }
 
-  return bounds
+    const record = createEdgeElements(edge, fromNode, toNode)
+    layoutEdge(record)
+    edgesEl.appendChild(record.group)
+    indexEdge(record)
+  }
 }
 
 // ----------------------------------------------------------------- bootstrap
@@ -895,9 +1020,9 @@ async function main() {
   const data = await response.json()
   statusEl.hidden = true
 
-  const bounds = drawCanvas(data)
-  fitToContent(bounds)
-  installViewportControls(bounds)
+  drawCanvas(data)
+  fitToContent(contentBounds(layout.nodes))
+  installViewportControls()
 }
 
 main().catch(error => {

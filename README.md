@@ -67,7 +67,9 @@ Block-reference subpaths `#^blockid` render the whole document, and `[[wikilinks
 
 ## Interaction
 
-Dragging a card's body selects text rather than panning, and a card whose content overflows scrolls on its own. A plain wheel pans; ⌘/Ctrl + wheel or a trackpad pinch zooms.
+Pressing a card's title row moves the card, and its edges follow. Pressing a group's frame moves the group together with every card the frame encloses, fixed at the moment the drag starts. Positions are not written back to the file: a reload restores the layout the `.canvas` stores. A text card has no title row and its content reaches the border, so it stays where the file puts it.
+
+Dragging a card's body selects text rather than moving the card, and a card whose content overflows scrolls on its own. Dragging anywhere else pans. A plain wheel pans; ⌘/Ctrl + wheel or a trackpad pinch zooms.
 
 A file card's title row carries two links: the title text opens the note rendered for reading (`?note=`), and the `</>` icon beside it opens the same file's markdown source (`?raw=`). A link card's title points at its URL.
 

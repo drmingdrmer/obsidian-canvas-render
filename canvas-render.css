@@ -123,6 +123,10 @@ body {
   z-index: 2;
 }
 
+.canvas-node.is-dragging {
+  cursor: grabbing;
+}
+
 .canvas-node[data-colored="true"] {
   background-color: color-mix(in srgb, var(--node-color) var(--canvas-color-tint), var(--canvas-node-background));
 }
