@@ -14,6 +14,10 @@
     ?note=<path>      render one markdown file on its own, for reading
     ?raw=<path>       show that file's markdown source instead
 
+  Each path is relative to this page, or an https URL on a host listed in
+  REMOTE_HOSTS in canvas-render.js — which lets a canvas and its notes be read
+  straight out of a GitHub repository, provided the host sends CORS headers.
+
   A card's title links to ?note=, and the icon beside it to ?raw=.
 -->
 <html lang="en">

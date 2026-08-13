@@ -11,6 +11,14 @@
 const DEFAULT_CANVAS_PATH = 'vault/demo.canvas'
 const THEME_STORAGE_KEY = 'canvas-render-theme'
 
+/**
+ * Hosts besides this page's own origin that a canvas, a vault or a note may be
+ * loaded from. Rendered markdown reaches the DOM through `innerHTML` and marked
+ * passes raw HTML through untouched, so a host listed here can run script in
+ * this page's origin — extending the list is a trust decision.
+ */
+const REMOTE_HOSTS = ['raw.githubusercontent.com']
+
 const GRID_SIZE = 20
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 3
@@ -334,13 +342,19 @@ function resolveColor(value) {
 
 // ------------------------------------------------------------- node contents
 
+/** The scheme and host at the head of an absolute URL; everything after is path. */
+const ABSOLUTE_URL_HEAD = /^https?:\/\/[^/]*/i
+
 /**
- * Percent-encodes each segment but keeps the separators. Encoding the whole
- * string in one go would escape the slashes; leaving it alone would let a `#`
- * in a file name cut the URL short.
+ * Percent-encodes each segment but keeps the separators, and keeps an absolute
+ * URL's scheme and host. Encoding the whole string in one go would escape the
+ * slashes; leaving it alone would let a `#` in a file name cut the URL short.
  */
 function encodePath(path) {
-  return path.split('/').map(encodeURIComponent).join('/')
+  const head = path.match(ABSOLUTE_URL_HEAD)
+  const prefix = head === null ? '' : head[0]
+  const segments = path.slice(prefix.length).split('/')
+  return prefix + segments.map(encodeURIComponent).join('/')
 }
 
 function vaultUrl(path) {
@@ -381,14 +395,24 @@ function placeholderElement(message) {
   return el
 }
 
+/**
+ * A host that sends no `Access-Control-Allow-Origin` makes `fetch` reject with
+ * a bare `TypeError` before any status code exists — the likeliest way a remote
+ * vault fails, and the one an HTTP status cannot describe.
+ */
+async function fetchFile(url) {
+  try {
+    return await fetch(url)
+  } catch (cause) {
+    const reason = 'the host is unreachable, or sends no CORS header for this page'
+    throw new Error(`Cannot reach ${url} — ${reason}`, { cause: cause })
+  }
+}
+
 async function loadMarkdownInto(contentEl, node) {
   const url = vaultUrl(node.file)
-  const response = await fetch(url)
-
-  if (!response.ok) {
-    contentEl.replaceChildren(placeholderElement(`Cannot load ${node.file} (HTTP ${response.status})`))
-    return
-  }
+  const response = await fetchFile(url)
+  if (!response.ok) throw new Error(`Cannot load ${node.file} (HTTP ${response.status})`)
 
   const source = await response.text()
   const section = sliceSubpath(source, node.subpath)
@@ -418,7 +442,9 @@ function fillFileNode(contentEl, node) {
   }
 
   contentEl.replaceChildren(placeholderElement('Loading…'))
-  loadMarkdownInto(contentEl, node)
+  loadMarkdownInto(contentEl, node).catch(error => {
+    contentEl.replaceChildren(placeholderElement(error.message))
+  })
 }
 
 function fillLinkNode(contentEl, node) {
@@ -766,12 +792,26 @@ function showStatus(message) {
   statusEl.hidden = false
 }
 
-/** The app only ever fetches from its own origin; a full URL is a configuration mistake. */
-function assertRelativePath(path, parameterName) {
-  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(path)
-  const isProtocolRelative = path.startsWith('//')
-  if (!hasScheme && !isProtocolRelative) return
-  throw new Error(`the ${parameterName} parameter only accepts a same-origin relative path, got ${path}`)
+/**
+ * Content may come from this page's own origin, or over https from a host in
+ * `REMOTE_HOSTS`. Any other host, and any other scheme — `data:`, `javascript:`
+ * — is either a configuration mistake or an attempt to run foreign script here.
+ */
+function assertAllowedHost(path, parameterName) {
+  const url = new URL(path, window.location.href)
+
+  const isSameProtocol = url.protocol === window.location.protocol
+  const isSameHost = url.host === window.location.host
+  if (isSameProtocol && isSameHost) return
+
+  const isHttps = url.protocol === 'https:'
+  const isAllowedHost = REMOTE_HOSTS.includes(url.hostname)
+  if (isHttps && isAllowedHost) return
+
+  const hosts = REMOTE_HOSTS.join(', ')
+  throw new Error(
+    `the ${parameterName} parameter accepts a same-origin path or an https URL on ${hosts}, got ${path}`,
+  )
 }
 
 function directoryOf(path) {
@@ -789,7 +829,7 @@ function resolveVaultRoot(params, canvasPath) {
   const explicitRoot = params.get('vault')
   if (explicitRoot === null) return directoryOf(canvasPath)
 
-  assertRelativePath(explicitRoot, 'vault')
+  assertAllowedHost(explicitRoot, 'vault')
   if (explicitRoot === '') return ''
   if (explicitRoot.endsWith('/')) return explicitRoot
   return `${explicitRoot}/`
@@ -806,7 +846,7 @@ function resolveVaultRoot(params, canvasPath) {
  * the response header claims.
  */
 async function showFileView(path, mode) {
-  assertRelativePath(path, mode)
+  assertAllowedHost(path, mode)
   const isRaw = mode === 'raw'
 
   document.body.dataset.mode = 'file'
@@ -816,7 +856,7 @@ async function showFileView(path, mode) {
   fileViewToggleEl.textContent = isRaw ? 'Rendered' : 'Source'
   fileViewEl.hidden = false
 
-  const response = await fetch(encodePath(path))
+  const response = await fetchFile(encodePath(path))
   if (!response.ok) throw new Error(`Cannot read ${path} (HTTP ${response.status})`)
   const text = await response.text()
 
@@ -845,11 +885,11 @@ async function main() {
   }
 
   const canvasPath = params.get('canvas') || DEFAULT_CANVAS_PATH
-  assertRelativePath(canvasPath, 'canvas')
+  assertAllowedHost(canvasPath, 'canvas')
   config.vaultRoot = resolveVaultRoot(params, canvasPath)
 
   showStatus(`Loading ${canvasPath} …`)
-  const response = await fetch(canvasPath)
+  const response = await fetchFile(encodePath(canvasPath))
   if (!response.ok) throw new Error(`Cannot read ${canvasPath} (HTTP ${response.status})`)
 
   const data = await response.json()

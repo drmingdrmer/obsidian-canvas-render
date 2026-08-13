@@ -35,7 +35,7 @@ Any static host serves the repository as-is. On GitHub Pages, **keep the `.nojek
 | `note` | Render a single markdown file on its own, for reading, instead of a canvas |
 | `raw` | Show a single markdown file as plain source |
 
-All four take same-origin relative paths only.
+All four take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is rendered with `innerHTML`, so whichever host serves one can run script in this page's origin.
 
 File nodes store paths relative to the vault root, so a canvas sitting at the root of its own directory needs no `vault` — that is how `?canvas=vault/demo.canvas` works here. Name the root explicitly when the canvas sits deeper in the vault, as it does in Obsidian when boards go in `boards/` and notes in `pages/`:
 
@@ -44,6 +44,18 @@ File nodes store paths relative to the vault root, so a canvas sitting at the ro
 ```
 
 Omitting it then renders the canvas with every file card reading `Cannot load … (HTTP 404)`.
+
+### A canvas on another host
+
+A canvas and the notes it embeds can stay in a GitHub repository, with nothing copied under the served directory:
+
+```
+?canvas=https://raw.githubusercontent.com/user/repo/refs/heads/main/boards/plan.canvas
+```
+
+The vault root still defaults to the directory holding the canvas, so notes stored beside it need no `vault`; notes elsewhere in the repository need the root named, `vault=https://raw.githubusercontent.com/user/repo/refs/heads/main/`.
+
+The host has to send `Access-Control-Allow-Origin`, which `raw.githubusercontent.com` does. Without that header the browser blocks the fetch before any status code exists, and the page reports the block instead of an HTTP error.
 
 ## Supported
 
