@@ -11,8 +11,10 @@
     ?canvas=<path>    the .canvas file to render, relative to this page
     &vault=<path>     the vault root that file nodes resolve against;
                       defaults to the directory holding the canvas file
-    ?raw=<path>       show one markdown file as plain UTF-8 source instead;
-                      this is where a card's title link goes
+    ?note=<path>      render one markdown file on its own, for reading
+    ?raw=<path>       show that file's markdown source instead
+
+  A card's title links to ?note=, and the icon beside it to ?raw=.
 -->
 <html lang="en">
 <head>
@@ -38,13 +40,17 @@
     <button class="canvas-control-item" id="zoom-reset" title="Reset to 100%">100%</button>
     <button class="canvas-control-item" id="zoom-in" title="Zoom in">&plus;</button>
     <button class="canvas-control-item" id="zoom-fit" title="Fit to content">Fit</button>
-    <button class="canvas-control-item" id="theme-toggle" title="Toggle light and dark theme">☾</button>
+    <button class="canvas-control-item theme-toggle" title="Toggle light and dark theme">☾</button>
   </div>
 </div>
 
-<div class="raw-view" id="raw-view" hidden>
-  <div class="raw-view-path" id="raw-view-path"></div>
-  <pre class="raw-view-source" id="raw-view-source"></pre>
+<div class="file-view" id="file-view" hidden>
+  <div class="file-view-header">
+    <span class="file-view-path" id="file-view-path"></span>
+    <a class="file-view-toggle" id="file-view-toggle"></a>
+    <button class="file-view-theme theme-toggle" title="Toggle light and dark theme">☾</button>
+  </div>
+  <div class="file-view-body" id="file-view-body"></div>
 </div>
 
 <div class="canvas-status" id="status" hidden></div>

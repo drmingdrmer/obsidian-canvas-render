@@ -134,6 +134,7 @@ body {
 .canvas-node-title {
   display: flex;
   flex: none;
+  gap: 10px;
   align-items: center;
   padding: 10px 16px 8px;
   overflow: hidden;
@@ -151,9 +152,15 @@ body {
   display: inline-flex;
   gap: 5px;
   align-items: center;
+  min-width: 0;
   max-width: 100%;
   color: inherit;
   text-decoration: none;
+}
+
+/* The source icon keeps its size; only the title text gives way to an ellipsis. */
+.canvas-node-source-link {
+  flex: none;
 }
 
 .canvas-node-title-text {
@@ -405,29 +412,78 @@ body {
   color: var(--text-normal);
 }
 
-/* ---------- raw markdown view ---------- */
+/* ---------- single-file view: rendered note, or its markdown source ---------- */
 
-body[data-mode="raw"] .canvas-wrapper {
+body[data-mode="file"] .canvas-wrapper {
   display: none;
 }
 
-.raw-view {
+.file-view {
   height: 100%;
-  padding: 24px 32px 48px;
   overflow: auto;
   background: var(--background-primary);
 }
 
-.raw-view-path {
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+.file-view-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 20px;
   border-bottom: 1px solid var(--background-modifier-border);
-  color: var(--text-muted);
-  font-size: 13px;
-  word-break: break-all;
+  background: var(--background-primary);
 }
 
-.raw-view-source {
+.file-view-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.file-view-toggle {
+  flex: none;
+  color: var(--text-accent);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.file-view-toggle:hover {
+  text-decoration: underline;
+}
+
+.file-view-theme {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.file-view-theme:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.file-view-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 20px 64px;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.file-view-source {
   margin: 0;
   color: var(--text-normal);
   font-family: "SFMono-Regular", Menlo, Consolas, monospace;

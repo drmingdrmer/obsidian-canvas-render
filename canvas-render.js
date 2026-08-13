@@ -61,10 +61,11 @@ const zoomInEl = document.getElementById('zoom-in')
 const zoomOutEl = document.getElementById('zoom-out')
 const zoomResetEl = document.getElementById('zoom-reset')
 const zoomFitEl = document.getElementById('zoom-fit')
-const themeToggleEl = document.getElementById('theme-toggle')
-const rawViewEl = document.getElementById('raw-view')
-const rawPathEl = document.getElementById('raw-view-path')
-const rawSourceEl = document.getElementById('raw-view-source')
+const themeToggleEls = document.querySelectorAll('.theme-toggle')
+const fileViewEl = document.getElementById('file-view')
+const fileViewPathEl = document.getElementById('file-view-path')
+const fileViewToggleEl = document.getElementById('file-view-toggle')
+const fileViewBodyEl = document.getElementById('file-view-body')
 
 // --------------------------------------------------------------------- state
 
@@ -87,8 +88,20 @@ function preferredTheme() {
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme
-  themeToggleEl.textContent = theme === 'dark' ? '☀' : '☾'
+  const glyph = theme === 'dark' ? '☀' : '☾'
+  for (const toggleEl of themeToggleEls) toggleEl.textContent = glyph
   localStorage.setItem(THEME_STORAGE_KEY, theme)
+}
+
+/** Every view carries a toggle, so the wiring cannot live with the canvas controls. */
+function installThemeToggles() {
+  applyTheme(preferredTheme())
+  for (const toggleEl of themeToggleEls) {
+    toggleEl.addEventListener('click', () => {
+      const isDark = document.documentElement.dataset.theme === 'dark'
+      applyTheme(isDark ? 'light' : 'dark')
+    })
+  }
 }
 
 // ------------------------------------------------------------------ markdown
@@ -128,11 +141,20 @@ function wikilinkToHtml(body) {
   return `<a class="internal-link is-unresolved" title="${escapeHtml(target.trim())}">${escapeHtml(label)}</a>`
 }
 
+/** True when the match occupies whole lines, so replacing it cannot disturb a paragraph. */
+function ownsItsLines(source, offset, length) {
+  const before = source.slice(0, offset)
+  const after = source.slice(offset + length)
+  const startsLine = before === '' || before.endsWith('\n')
+  const endsLine = after === '' || after.startsWith('\n')
+  return startsLine && endsLine
+}
+
 /** Pulls math out of the source so marked cannot mangle `_`, `*` and `\` inside it. */
 function extractInline(source) {
   const mathItems = []
 
-  const replaced = source.replace(INLINE_SCAN, (match, code, display, inline, wikilink) => {
+  const replaced = source.replace(INLINE_SCAN, (match, code, display, inline, wikilink, offset) => {
     if (code !== undefined) return code
 
     if (wikilink !== undefined) return wikilinkToHtml(wikilink)
@@ -141,7 +163,14 @@ function extractInline(source) {
     const body = isDisplay ? display : inline
     mathItems.push({ body: body, display: isDisplay })
     const index = mathItems.length - 1
-    return `${MATH_PLACEHOLDER_PREFIX}${index}${MATH_PLACEHOLDER_SUFFIX}`
+    const placeholder = `${MATH_PLACEHOLDER_PREFIX}${index}${MATH_PLACEHOLDER_SUFFIX}`
+
+    // A block of display math becomes a paragraph of its own, so that whatever
+    // follows cannot absorb it: an immediately following `---` would otherwise
+    // read as a setext underline and turn the formula into a heading.
+    const isBlock = isDisplay && ownsItsLines(source, offset, match.length)
+    if (!isBlock) return placeholder
+    return `\n\n${placeholder}\n\n`
   })
 
   return { text: replaced, mathItems: mathItems }
@@ -318,6 +347,14 @@ function vaultUrl(path) {
   return encodePath(config.vaultRoot + path)
 }
 
+function noteHref(path) {
+  return `?note=${encodeURIComponent(path)}`
+}
+
+function rawHref(path) {
+  return `?raw=${encodeURIComponent(path)}`
+}
+
 function fileExtension(path) {
   const dotIndex = path.lastIndexOf('.')
   if (dotIndex < 0) return ''
@@ -402,18 +439,15 @@ function nodeTitleText(node) {
   return node.url
 }
 
-/**
- * Where that title takes the reader when clicked. Notes go through this page's
- * own raw view rather than straight at the `.md`, so the source reads correctly
- * no matter what media type the host serves markdown as.
- */
-function nodeTitleHref(node) {
-  if (node.type === 'link') return node.url
-  return `?raw=${encodeURIComponent(config.vaultRoot + node.file)}`
-}
+/** lucide `external-link`: the title opens a separate tab. */
+const EXTERNAL_LINK_ICON =
+  '<path d="M15 3h6v6"/><path d="M10 14 21 3"/>' +
+  '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/>'
 
-/** lucide `external-link`, signalling that the title opens a separate tab. */
-function createExternalLinkIcon() {
+/** lucide `code`: the familiar mark for "show me the source". */
+const SOURCE_ICON = '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>'
+
+function createIcon(paths) {
   const icon = document.createElementNS(SVG_NAMESPACE, 'svg')
   icon.setAttribute('class', 'canvas-node-title-icon')
   icon.setAttribute('viewBox', '0 0 24 24')
@@ -422,31 +456,49 @@ function createExternalLinkIcon() {
   icon.setAttribute('stroke-width', '2')
   icon.setAttribute('stroke-linecap', 'round')
   icon.setAttribute('stroke-linejoin', 'round')
-  icon.innerHTML =
-    '<path d="M15 3h6v6"/><path d="M10 14 21 3"/>' +
-    '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/>'
+  icon.innerHTML = paths
   return icon
 }
 
+function createTitleLink(href, tooltip) {
+  const linkEl = document.createElement('a')
+  linkEl.className = 'canvas-node-title-link'
+  linkEl.href = href
+  linkEl.target = '_blank'
+  linkEl.rel = 'noopener'
+  linkEl.title = tooltip
+  return linkEl
+}
+
+/**
+ * Two destinations per card: the title text reads the note, the icon beside it
+ * shows the markdown source. Both go through this page's own views rather than
+ * straight at the `.md`, so the text stays correct whatever media type the host
+ * serves markdown as.
+ */
 function createTitleElement(node) {
   const titleEl = document.createElement('div')
   titleEl.className = 'canvas-node-title'
 
-  // The anchor is inline-sized, so only the text and the icon are clickable —
+  // Each anchor is inline-sized, so only its own text and icon are clickable —
   // not the empty remainder of the title row.
-  const linkEl = document.createElement('a')
-  linkEl.className = 'canvas-node-title-link'
-  linkEl.href = nodeTitleHref(node)
-  linkEl.target = '_blank'
-  linkEl.rel = 'noopener'
-  linkEl.title = node.type === 'file' ? `Open ${node.file}` : `Open ${node.url}`
+  const isLink = node.type === 'link'
+  const primaryHref = isLink ? node.url : noteHref(config.vaultRoot + node.file)
+  const primaryTooltip = isLink ? `Open ${node.url}` : `Read ${node.file}`
+  const primaryEl = createTitleLink(primaryHref, primaryTooltip)
 
   const textEl = document.createElement('span')
   textEl.className = 'canvas-node-title-text'
   textEl.textContent = nodeTitleText(node)
+  primaryEl.append(textEl, createIcon(EXTERNAL_LINK_ICON))
+  titleEl.appendChild(primaryEl)
 
-  linkEl.append(textEl, createExternalLinkIcon())
-  titleEl.appendChild(linkEl)
+  if (isLink) return titleEl
+
+  const sourceEl = createTitleLink(rawHref(config.vaultRoot + node.file), `View source of ${node.file}`)
+  sourceEl.classList.add('canvas-node-source-link')
+  sourceEl.appendChild(createIcon(SOURCE_ICON))
+  titleEl.appendChild(sourceEl)
   return titleEl
 }
 
@@ -664,10 +716,6 @@ function installViewportControls(bounds) {
   zoomOutEl.addEventListener('click', () => zoomAroundCentre(1 / ZOOM_STEP))
   zoomResetEl.addEventListener('click', () => zoomAroundCentre(1 / view.zoom))
   zoomFitEl.addEventListener('click', () => fitToContent(bounds))
-  themeToggleEl.addEventListener('click', () => {
-    const isDark = document.documentElement.dataset.theme === 'dark'
-    applyTheme(isDark ? 'light' : 'dark')
-  })
 }
 
 // ------------------------------------------------------------------- drawing
@@ -748,33 +796,51 @@ function resolveVaultRoot(params, canvasPath) {
 }
 
 /**
- * Shows one note as plain source. Hosts disagree on the media type they give
- * `.md` — GitHub Pages and nginx send no charset, and the browser then decodes
- * UTF-8 as Latin-1. Reading the bytes here sidesteps that: `Response.text()`
- * always decodes as UTF-8, whatever the response header claims.
+ * Shows one note on its own, either rendered for reading (`note`) or as its
+ * markdown source (`raw`), with a link across to the other one.
+ *
+ * The bytes are read here rather than by linking straight at the `.md`, because
+ * hosts disagree on the media type they give markdown — GitHub Pages, nginx and
+ * Python's `http.server` all send it without a charset, and the browser then
+ * decodes UTF-8 as Latin-1. `Response.text()` always decodes as UTF-8, whatever
+ * the response header claims.
  */
-async function showRawFile(rawPath) {
-  assertRelativePath(rawPath, 'raw')
+async function showFileView(path, mode) {
+  assertRelativePath(path, mode)
+  const isRaw = mode === 'raw'
 
-  document.body.dataset.mode = 'raw'
-  document.title = rawPath
-  rawPathEl.textContent = rawPath
-  rawViewEl.hidden = false
+  document.body.dataset.mode = 'file'
+  document.title = path
+  fileViewPathEl.textContent = path
+  fileViewToggleEl.href = isRaw ? noteHref(path) : rawHref(path)
+  fileViewToggleEl.textContent = isRaw ? 'Rendered' : 'Source'
+  fileViewEl.hidden = false
 
-  const response = await fetch(encodePath(rawPath))
-  if (!response.ok) throw new Error(`Cannot read ${rawPath} (HTTP ${response.status})`)
-  rawSourceEl.textContent = await response.text()
+  const response = await fetch(encodePath(path))
+  if (!response.ok) throw new Error(`Cannot read ${path} (HTTP ${response.status})`)
+  const text = await response.text()
+
+  if (!isRaw) {
+    fileViewBodyEl.replaceChildren(markdownElement(renderMarkdown(text)))
+    return
+  }
+
+  const sourceEl = document.createElement('pre')
+  sourceEl.className = 'file-view-source'
+  sourceEl.textContent = text
+  fileViewBodyEl.replaceChildren(sourceEl)
 }
 
 async function main() {
-  applyTheme(preferredTheme())
+  installThemeToggles()
   marked.use({ gfm: true, breaks: false })
 
   const params = new URLSearchParams(window.location.search)
 
-  const rawPath = params.get('raw')
-  if (rawPath !== null) {
-    await showRawFile(rawPath)
+  for (const mode of ['note', 'raw']) {
+    const path = params.get(mode)
+    if (path === null) continue
+    await showFileView(path, mode)
     return
   }
 

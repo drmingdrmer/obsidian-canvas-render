@@ -49,7 +49,7 @@ Settings → Pages → Source → **Deploy from a branch** → `main` / `(root)`
 | **Netlify** | Same `_headers` support, and a folder can be drag-dropped in | 100 GB/month on the free tier |
 | **Vercel** | Headers via `vercel.json` | Aimed at frameworks; a plain static site is a downgrade case |
 
-Response headers do not actually matter here — see [Reading a note's source](#reading-a-notes-source) — so pick on price and latency alone.
+Response headers do not actually matter here — see [Reading a note](#reading-a-note) — so pick on price and latency alone.
 
 The repository is also served by jsDelivr without any setup, if you would rather not host the app yourself:
 
@@ -63,9 +63,10 @@ https://cdn.jsdelivr.net/gh/drmingdrmer/obsidian-canvas-render@main/canvas-rende
 |---|---|---|
 | `canvas` | no | The `.canvas` file to render, relative to the page. Defaults to `vault/demo.canvas` |
 | `vault` | no | The vault root that file nodes resolve against. Defaults to the directory holding the canvas file |
+| `note` | no | Render a single markdown file on its own, for reading, instead of a canvas |
 | `raw` | no | Show a single markdown file as plain source instead of rendering a canvas |
 
-All three take same-origin relative paths only. A full URL with a scheme stops with an error rather than being fetched — this app is not a cross-site proxy.
+All four take same-origin relative paths only. A full URL with a scheme stops with an error rather than being fetched — this app is not a cross-site proxy.
 
 ### Why `vault` can be inferred
 
@@ -111,17 +112,19 @@ Drag the background to pan; dragging inside a card's body selects text instead, 
 
 File and link cards carry a title row at the top, drawn **inside** the card, matching Obsidian's `.embed-title`: body font size, weight 600, one line with an ellipsis. A file node shows its name without the `.md` suffix, a link node shows its URL. Text nodes have no title row. A group's name sits **above** its frame — Obsidian's `.canvas-node-label`, and the only label drawn outside a card.
 
-The title is a link that opens the note's source in a new tab. A new tab, rather than the same one, so the canvas keeps its pan and zoom position.
+A file card's title row carries two links, both opening in a new tab so the canvas keeps its pan and zoom position: the title text opens the note rendered for reading, and the `</>` icon beside it opens the same file's markdown source. A link card carries only the title, pointing at its URL.
 
-The clickable area is exactly the title text plus its trailing icon, not the whole row. The title row is a flex item and stretches to the card's width, but the `<a>` inside it is `inline-flex` and wraps only its content. On a 320px card the title row measures 318px and the clickable part 82px; pressing the blank space to the right of the title behaves like pressing anywhere else on the card — it pans the canvas.
+Each icon names its destination — an external-link mark on the title, `</>` on the source link, the usual sign for "show me the text behind this". The reading link keeps the title text as its target, since a word is an easier thing to hit than a 13px glyph.
 
-That trailing external-link icon is not there to enlarge the target. It signals that the click leaves the page; an icon on its own would be a worse target than the text it accompanies.
+The clickable area of each link is exactly its own content, not the whole row. The title row is a flex item and stretches to the card's width, but each `<a>` inside it is `inline-flex` and wraps only its text and icon. On a 460px card the title row measures 458px and the two links 82px and 13px; pressing the blank space to their right behaves like pressing anywhere else on the card — it pans the canvas.
 
-### Reading a note's source
+### Reading a note
 
-Title links go to `?raw=<path>`, a view inside this page, rather than straight at the `.md` file. Hosts disagree on the media type they give markdown — GitHub Pages, nginx and Python's `http.server` all send it without a charset, and the browser then decodes UTF-8 bytes as Latin-1, turning `定义` into `å®šä¹‰`. Fetching the file here avoids the question entirely, because `Response.text()` always decodes as UTF-8 regardless of what the response header claims.
+`?note=<path>` renders one markdown file on its own, through the same pipeline the cards use; `?raw=<path>` shows that file's source in a `<pre>`. Both views share a header giving the file's path, a link across to the other view, and the theme toggle.
 
-That is why the host's header configuration does not matter. `serve.sh` still overrides two media types for local use, so that opening a `.md` URL by hand also reads correctly:
+Both fetch the file and decode it in the page, which is what frees them from the host's configuration. Hosts disagree on the media type they give markdown — GitHub Pages, nginx and Python's `http.server` all send it without a charset, and the browser then decodes UTF-8 bytes as Latin-1, turning `定义` into `å®šä¹‰`. `Response.text()` always decodes as UTF-8 whatever the response header claims, so the text comes out right wherever the files are served from.
+
+`serve.sh` still overrides two media types for local use, so that opening a `.md` URL by hand also reads correctly:
 
 ```
 .md      →  text/plain; charset=utf-8
@@ -188,9 +191,10 @@ The alternation order is the precedence: fenced and inline code win, which keeps
 The steps:
 
 1. Math becomes a `CANVASMATH<n>ENDMATH` placeholder. Placeholders are letters and digits only, carry no markdown syntax, and marked leaves them alone
-2. Wikilinks become `<a>` tags directly — marked passes inline HTML through, so no placeholder is needed
-3. marked parses the whole text
-4. KaTeX output is substituted back by placeholder number. Display math that marked wrapped in its own `<p>` is unwrapped first, or the block-level `katex-display` would sit inside a paragraph
+2. A `$$` block that occupies whole lines gets blank lines around its placeholder, making it a paragraph of its own. A `---` on the line right after the closing `$$` would otherwise read as a setext underline and turn the whole formula into a heading
+3. Wikilinks become `<a>` tags directly — marked passes inline HTML through, so no placeholder is needed
+4. marked parses the whole text
+5. KaTeX output is substituted back by placeholder number. Display math that marked wrapped in its own `<p>` is unwrapped first, or the block-level `katex-display` would sit inside a paragraph
 
 Leftovers from Wikipedia imports such as `[[ 1 ]](#cite_note-1)` render as a link followed by literal text. Obsidian produces the same thing; the problem is in the source document.
 
