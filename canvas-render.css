@@ -405,8 +405,42 @@ body {
   color: var(--text-normal);
 }
 
+/* ---------- raw markdown view ---------- */
+
+body[data-mode="raw"] .canvas-wrapper {
+  display: none;
+}
+
+.raw-view {
+  height: 100%;
+  padding: 24px 32px 48px;
+  overflow: auto;
+  background: var(--background-primary);
+}
+
+.raw-view-path {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.raw-view-source {
+  margin: 0;
+  color: var(--text-normal);
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* ---------- status ---------- */
+
 .canvas-status {
-  position: absolute;
+  position: fixed;
   top: 50%;
   left: 50%;
   padding: 12px 20px;

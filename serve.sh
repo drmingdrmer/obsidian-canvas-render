@@ -1,8 +1,11 @@
 #!/bin/bash
 # Serve this directory so the page can fetch the .canvas file and the notes it
-# embeds. Markdown is served as UTF-8 plain text so that clicking a card's title
-# opens the source readably; the stock text/markdown type carries no charset and
-# browsers then decode Chinese as Latin-1.
+# embeds.
+#
+# Markdown is served as UTF-8 plain text purely as a convenience, for when a .md
+# URL is opened by hand: the stock text/markdown type carries no charset and
+# browsers then decode UTF-8 as Latin-1. The app itself does not depend on this —
+# it reads note sources through its own ?raw= view, which always decodes UTF-8.
 set -e
 cd "$(dirname "$0")"
 

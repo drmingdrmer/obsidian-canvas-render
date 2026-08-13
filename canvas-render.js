@@ -62,6 +62,9 @@ const zoomOutEl = document.getElementById('zoom-out')
 const zoomResetEl = document.getElementById('zoom-reset')
 const zoomFitEl = document.getElementById('zoom-fit')
 const themeToggleEl = document.getElementById('theme-toggle')
+const rawViewEl = document.getElementById('raw-view')
+const rawPathEl = document.getElementById('raw-view-path')
+const rawSourceEl = document.getElementById('raw-view-source')
 
 // --------------------------------------------------------------------- state
 
@@ -302,9 +305,17 @@ function resolveColor(value) {
 
 // ------------------------------------------------------------- node contents
 
+/**
+ * Percent-encodes each segment but keeps the separators. Encoding the whole
+ * string in one go would escape the slashes; leaving it alone would let a `#`
+ * in a file name cut the URL short.
+ */
+function encodePath(path) {
+  return path.split('/').map(encodeURIComponent).join('/')
+}
+
 function vaultUrl(path) {
-  const segments = path.split('/').map(encodeURIComponent)
-  return config.vaultRoot + segments.join('/')
+  return encodePath(config.vaultRoot + path)
 }
 
 function fileExtension(path) {
@@ -338,7 +349,7 @@ async function loadMarkdownInto(contentEl, node) {
   const response = await fetch(url)
 
   if (!response.ok) {
-    contentEl.replaceChildren(placeholderElement(`无法加载 ${node.file}（HTTP ${response.status}）`))
+    contentEl.replaceChildren(placeholderElement(`Cannot load ${node.file} (HTTP ${response.status})`))
     return
   }
 
@@ -369,7 +380,7 @@ function fillFileNode(contentEl, node) {
     return
   }
 
-  contentEl.replaceChildren(placeholderElement('加载中…'))
+  contentEl.replaceChildren(placeholderElement('Loading…'))
   loadMarkdownInto(contentEl, node)
 }
 
@@ -391,10 +402,14 @@ function nodeTitleText(node) {
   return node.url
 }
 
-/** Where that title takes the reader when clicked. */
+/**
+ * Where that title takes the reader when clicked. Notes go through this page's
+ * own raw view rather than straight at the `.md`, so the source reads correctly
+ * no matter what media type the host serves markdown as.
+ */
 function nodeTitleHref(node) {
-  if (node.type === 'file') return vaultUrl(node.file)
-  return node.url
+  if (node.type === 'link') return node.url
+  return `?raw=${encodeURIComponent(config.vaultRoot + node.file)}`
 }
 
 /** lucide `external-link`, signalling that the title opens a separate tab. */
@@ -424,7 +439,7 @@ function createTitleElement(node) {
   linkEl.href = nodeTitleHref(node)
   linkEl.target = '_blank'
   linkEl.rel = 'noopener'
-  linkEl.title = node.type === 'file' ? `打开 ${node.file}` : `打开 ${node.url}`
+  linkEl.title = node.type === 'file' ? `Open ${node.file}` : `Open ${node.url}`
 
   const textEl = document.createElement('span')
   textEl.className = 'canvas-node-title-text'
@@ -476,7 +491,7 @@ function createNodeElement(node) {
   } else if (node.type === 'link') {
     fillLinkNode(contentEl, node)
   } else {
-    contentEl.replaceChildren(placeholderElement(`不支持的节点类型：${node.type}`))
+    contentEl.replaceChildren(placeholderElement(`Unsupported node type: ${node.type}`))
   }
 
   return el
@@ -658,7 +673,7 @@ function installViewportControls(bounds) {
 // ------------------------------------------------------------------- drawing
 
 function drawCanvas(data) {
-  if (!Array.isArray(data.nodes)) throw new TypeError('canvas 文件缺少 "nodes" 数组')
+  if (!Array.isArray(data.nodes)) throw new TypeError('canvas file has no "nodes" array')
 
   const nodes = data.nodes
   const edges = Array.isArray(data.edges) ? data.edges : []
@@ -708,7 +723,7 @@ function assertRelativePath(path, parameterName) {
   const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(path)
   const isProtocolRelative = path.startsWith('//')
   if (!hasScheme && !isProtocolRelative) return
-  throw new Error(`${parameterName} 参数只接受同源相对路径，收到的是 ${path}`)
+  throw new Error(`the ${parameterName} parameter only accepts a same-origin relative path, got ${path}`)
 }
 
 function directoryOf(path) {
@@ -732,18 +747,44 @@ function resolveVaultRoot(params, canvasPath) {
   return `${explicitRoot}/`
 }
 
+/**
+ * Shows one note as plain source. Hosts disagree on the media type they give
+ * `.md` — GitHub Pages and nginx send no charset, and the browser then decodes
+ * UTF-8 as Latin-1. Reading the bytes here sidesteps that: `Response.text()`
+ * always decodes as UTF-8, whatever the response header claims.
+ */
+async function showRawFile(rawPath) {
+  assertRelativePath(rawPath, 'raw')
+
+  document.body.dataset.mode = 'raw'
+  document.title = rawPath
+  rawPathEl.textContent = rawPath
+  rawViewEl.hidden = false
+
+  const response = await fetch(encodePath(rawPath))
+  if (!response.ok) throw new Error(`Cannot read ${rawPath} (HTTP ${response.status})`)
+  rawSourceEl.textContent = await response.text()
+}
+
 async function main() {
   applyTheme(preferredTheme())
   marked.use({ gfm: true, breaks: false })
 
   const params = new URLSearchParams(window.location.search)
+
+  const rawPath = params.get('raw')
+  if (rawPath !== null) {
+    await showRawFile(rawPath)
+    return
+  }
+
   const canvasPath = params.get('canvas') || DEFAULT_CANVAS_PATH
   assertRelativePath(canvasPath, 'canvas')
   config.vaultRoot = resolveVaultRoot(params, canvasPath)
 
-  showStatus(`加载 ${canvasPath} …`)
+  showStatus(`Loading ${canvasPath} …`)
   const response = await fetch(canvasPath)
-  if (!response.ok) throw new Error(`无法读取 ${canvasPath}（HTTP ${response.status}）`)
+  if (!response.ok) throw new Error(`Cannot read ${canvasPath} (HTTP ${response.status})`)
 
   const data = await response.json()
   statusEl.hidden = true

@@ -6,13 +6,15 @@
   A web server is required: the page fetches the .canvas file and the notes it
   embeds, which file:// blocks.
 
-  Which canvas to render is a URL query parameter:
+  URL query parameters:
 
-    ?canvas=<path>    the .canvas file, relative to this page
+    ?canvas=<path>    the .canvas file to render, relative to this page
     &vault=<path>     the vault root that file nodes resolve against;
                       defaults to the directory holding the canvas file
+    ?raw=<path>       show one markdown file as plain UTF-8 source instead;
+                      this is where a card's title link goes
 -->
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
@@ -31,16 +33,21 @@
     <svg class="canvas-edges" id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
   </div>
 
-  <div class="canvas-status" id="status" hidden></div>
-
   <div class="canvas-controls">
-    <button class="canvas-control-item" id="zoom-out" title="缩小">&minus;</button>
-    <button class="canvas-control-item" id="zoom-reset" title="缩放到 100%">100%</button>
-    <button class="canvas-control-item" id="zoom-in" title="放大">&plus;</button>
-    <button class="canvas-control-item" id="zoom-fit" title="适应画布">适应</button>
-    <button class="canvas-control-item" id="theme-toggle" title="切换明暗主题">☾</button>
+    <button class="canvas-control-item" id="zoom-out" title="Zoom out">&minus;</button>
+    <button class="canvas-control-item" id="zoom-reset" title="Reset to 100%">100%</button>
+    <button class="canvas-control-item" id="zoom-in" title="Zoom in">&plus;</button>
+    <button class="canvas-control-item" id="zoom-fit" title="Fit to content">Fit</button>
+    <button class="canvas-control-item" id="theme-toggle" title="Toggle light and dark theme">☾</button>
   </div>
 </div>
+
+<div class="raw-view" id="raw-view" hidden>
+  <div class="raw-view-path" id="raw-view-path"></div>
+  <pre class="raw-view-source" id="raw-view-source"></pre>
+</div>
+
+<div class="canvas-status" id="status" hidden></div>
 
 <script src="lib/marked.min.js"></script>
 <script src="lib/katex/katex.min.js"></script>

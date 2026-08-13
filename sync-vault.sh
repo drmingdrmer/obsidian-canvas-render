@@ -3,11 +3,21 @@
 # canvas file's own directory — the directory the page treats as the vault root.
 # Re-run after editing the canvas in Obsidian.
 #
-#   ./sync-vault.sh [source-vault] [canvas-file]
+#   ./sync-vault.sh <source-vault> [canvas-file]
+#
+# Example:
+#   ./sync-vault.sh ~/Documents/my-vault vault/demo.canvas
 set -e
 cd "$(dirname "$0")"
 
-SOURCE_VAULT="${1:-..}"
+if [ $# -lt 1 ]; then
+    echo "usage: $(basename "$0") <source-vault> [canvas-file]" >&2
+    echo "  source-vault  root of the Obsidian vault to copy notes out of" >&2
+    echo "  canvas-file   canvas to read references from (default: vault/demo.canvas)" >&2
+    exit 2
+fi
+
+SOURCE_VAULT="$1"
 CANVAS_FILE="${2:-vault/demo.canvas}"
 
 python3 - "$SOURCE_VAULT" "$CANVAS_FILE" <<'PYTHON'

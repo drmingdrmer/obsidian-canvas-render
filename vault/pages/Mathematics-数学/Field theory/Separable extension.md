@@ -147,3 +147,5 @@ Let $D_{1},\ldots ,D_{m}$ be a basis of $\operatorname {Der} _{F}(E,E)$ and�
 - ["separable extension of a field k"](https://www.encyclopediaofmath.org/index.php?title=separable_extension_of_a_field_k) , Encyclopedia of Mathematics , [[EMS Press]] , 2001 [1994]
 
 ---
+
+*Source: [Separable extension](https://en.wikipedia.org/wiki/Separable_extension) on Wikipedia, by Wikipedia contributors, licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Adapted: converted to Markdown, article links rewritten as wikilinks.*

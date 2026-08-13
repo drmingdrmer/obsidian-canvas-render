@@ -1,216 +1,253 @@
-# canvas-render
+# obsidian-canvas-render
 
-在浏览器里把 Obsidian 的 `.canvas` 文件渲染成接近 Obsidian 的样子。
+Render Obsidian `.canvas` files on the web, close to how Obsidian draws them — embedded notes, LaTeX, edges and all.
 
-文件格式是 [JSON Canvas](https://jsoncanvas.org)——Obsidian 官方发布的开放规范，MIT 许可。Obsidian 自己的渲染代码没有独立模块，整段压缩在 `obsidian.asar` 的 `app.js` 里，并且依赖 Obsidian 内部的 Vault、Workspace、MarkdownRenderer 对象，抽不出来也跑不起来，所以这里按规范重新实现了一份。
+![screenshot](assets/screenshot.png)
 
-## 运行
+**[Live demo](https://drmingdrmer.github.io/obsidian-canvas-render/)**
+
+The file format is [JSON Canvas](https://jsoncanvas.org), the open spec Obsidian publishes under the MIT license. Obsidian's own renderer cannot be reused: it has no separate module, it is minified into `app.js` inside `obsidian.asar`, and it is wired to Obsidian's internal Vault, Workspace and MarkdownRenderer objects. So this is a fresh implementation against the spec — no build step, no npm dependencies, three source files a browser loads directly.
+
+## Quick start
 
 ```bash
-./serve.sh          # 默认 8000 端口，可传参数改端口
+./serve.sh          # port 8000 by default; pass another as the first argument
 ```
 
-必须经过 web server：页面要 `fetch` 那个 `.canvas` 文件和它引用的 markdown，浏览器会拦截 `file://` 协议下的这类请求。
+A web server is required. The page fetches the `.canvas` file and the notes it embeds, and browsers block those requests under `file://`.
 
-`serve.sh` 不是直接调 `python3 -m http.server`，而是覆盖了两个 MIME 类型：
+To view your own canvas, copy the canvas file and the notes it references into a directory, keeping the paths the canvas stores, then point the page at it:
+
+```
+?canvas=my-board/index.canvas
+```
+
+`sync-vault.sh` does that copying for you, reading the references straight out of the canvas:
+
+```bash
+./sync-vault.sh ~/Documents/my-vault my-board/index.canvas
+```
+
+It exits with an error if a referenced file is missing from the vault, so nothing gets silently dropped. Re-run it after adding nodes in Obsidian — the deployed copies do not update themselves.
+
+## Deploying
+
+Any static host works. There is nothing to build: upload the repository as-is and the site is live.
+
+### GitHub Pages
+
+Settings → Pages → Source → **Deploy from a branch** → `main` / `(root)`. The site appears at `https://<user>.github.io/<repo>/`.
+
+**The `.nojekyll` file in the repository root is what makes this work.** Pages runs Jekyll on branch deploys, and Jekyll compiles `.md` files into `.html` instead of copying them through. Without `.nojekyll` every note would 404 and every file node on the canvas would fail to load.
+
+### Other hosts
+
+| Host | Why | Cost |
+|---|---|---|
+| **GitHub Pages** | The repository is already there; custom domains are free | Cannot set custom response headers |
+| **Cloudflare Pages** | Free, fast CDN, supports a `_headers` file; leave the build command empty | One more service to wire up |
+| **Netlify** | Same `_headers` support, and a folder can be drag-dropped in | 100 GB/month on the free tier |
+| **Vercel** | Headers via `vercel.json` | Aimed at frameworks; a plain static site is a downgrade case |
+
+Response headers do not actually matter here — see [Reading a note's source](#reading-a-notes-source) — so pick on price and latency alone.
+
+The repository is also served by jsDelivr without any setup, if you would rather not host the app yourself:
+
+```
+https://cdn.jsdelivr.net/gh/drmingdrmer/obsidian-canvas-render@main/canvas-render.js
+```
+
+## URL parameters
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `canvas` | no | The `.canvas` file to render, relative to the page. Defaults to `vault/demo.canvas` |
+| `vault` | no | The vault root that file nodes resolve against. Defaults to the directory holding the canvas file |
+| `raw` | no | Show a single markdown file as plain source instead of rendering a canvas |
+
+All three take same-origin relative paths only. A full URL with a scheme stops with an error rather than being fetched — this app is not a cross-site proxy.
+
+### Why `vault` can be inferred
+
+JSON Canvas file nodes store paths relative to the vault root. The least-effort deployment layout is one directory per canvas with the canvas file sitting at that directory's root, which makes the canvas's own directory the vault root. This repository's `vault/` is exactly such a bundle:
+
+```
+vault/
+├── demo.canvas                        ← the canvas sits at the bundle root
+└── pages/Mathematics-数学/…            ← the path a file node stores
+```
+
+so `?canvas=vault/demo.canvas` needs no second parameter. Serving several canvases means placing several such directories side by side:
+
+```
+?canvas=math/board.canvas         →  vault root = math/
+?canvas=roadmap/2026.canvas       →  vault root = roadmap/
+```
+
+Only when the canvas lives in a subdirectory of the vault — common in Obsidian, where boards go in `boards/` and notes in `pages/` — does the root have to be named explicitly:
+
+```
+?canvas=notes/boards/plan.canvas&vault=notes/
+```
+
+Forgetting `vault` in that case looks like this: the canvas renders fine, but every file node's card reads `Cannot load … (HTTP 404)`, because the paths resolved against the canvas's subdirectory. That message is the cue to add the parameter.
+
+## Supported
+
+Nodes: `text`, `file`, `link`, `group`.
+Edges: `fromSide` / `toSide` (both optional), the `fromEnd` / `toEnd` arrow switches, `label`, `color`.
+Colors: Obsidian's six presets (`"1"`–`"6"`) and custom hex values.
+
+Two things are not implemented:
+
+- Block-reference subpaths `#^blockid` render the whole document
+- `[[wikilinks]]` are styled but not navigable
+
+## Interaction
+
+Drag the background to pan; dragging inside a card's body selects text instead, and a card whose content overflows scrolls on its own. ⌘/Ctrl + wheel or a trackpad pinch zooms, a plain wheel pans. The controls at bottom left are zoom, fit, and the light/dark toggle, whose choice is kept in `localStorage`.
+
+### Card titles
+
+File and link cards carry a title row at the top, drawn **inside** the card, matching Obsidian's `.embed-title`: body font size, weight 600, one line with an ellipsis. A file node shows its name without the `.md` suffix, a link node shows its URL. Text nodes have no title row. A group's name sits **above** its frame — Obsidian's `.canvas-node-label`, and the only label drawn outside a card.
+
+The title is a link that opens the note's source in a new tab. A new tab, rather than the same one, so the canvas keeps its pan and zoom position.
+
+The clickable area is exactly the title text plus its trailing icon, not the whole row. The title row is a flex item and stretches to the card's width, but the `<a>` inside it is `inline-flex` and wraps only its content. On a 320px card the title row measures 318px and the clickable part 82px; pressing the blank space to the right of the title behaves like pressing anywhere else on the card — it pans the canvas.
+
+That trailing external-link icon is not there to enlarge the target. It signals that the click leaves the page; an icon on its own would be a worse target than the text it accompanies.
+
+### Reading a note's source
+
+Title links go to `?raw=<path>`, a view inside this page, rather than straight at the `.md` file. Hosts disagree on the media type they give markdown — GitHub Pages, nginx and Python's `http.server` all send it without a charset, and the browser then decodes UTF-8 bytes as Latin-1, turning `定义` into `å®šä¹‰`. Fetching the file here avoids the question entirely, because `Response.text()` always decodes as UTF-8 regardless of what the response header claims.
+
+That is why the host's header configuration does not matter. `serve.sh` still overrides two media types for local use, so that opening a `.md` URL by hand also reads correctly:
 
 ```
 .md      →  text/plain; charset=utf-8
 .canvas  →  application/json; charset=utf-8
 ```
 
-`.md` 这条是必需的。Python 默认发 `Content-Type: text/markdown`，不带 charset，Chrome 于是按 Latin-1 解码，点开标题看到的中文会是 `å®šä¹‰` 这样的乱码。**部署到其他服务器时要做同样的配置**，nginx 对应一行：
+Nothing depends on it. Plain `python3 -m http.server` renders identically.
 
-```nginx
-types { text/plain md; }
-charset utf-8;
-```
+## How it works
 
-## 参数与部署
+### DOM and SVG, not a `<canvas>` element
 
-渲染哪个 canvas 由 URL query 参数决定，一个必需一个可选：
+"Canvas" here is Obsidian's whiteboard feature and has nothing to do with the HTML5 bitmap `<canvas>`. Node contents are rendered markdown that needs text selection, independent scrolling and KaTeX typesetting — capabilities that would all have to be rebuilt from scratch on a bitmap surface. So:
 
-| 参数 | 必需 | 含义 |
-|---|---|---|
-| `canvas` | 是 | `.canvas` 文件路径，相对于页面所在目录。不传时加载 `vault/demo.canvas` |
-| `vault` | 否 | file 节点路径解析的 vault 根。默认取 `canvas` 文件所在的目录 |
+- every node is an absolutely positioned `div` whose `left/top/width/height` come straight from the node's `x/y/width/height`
+- a card lays out as a flex column: the title row is `flex: none` at the top, the content area is `flex: 1`, takes the remaining height and scrolls on its own
+- all edges are drawn in one `<svg>` layer stacked below the nodes
+- `group` nodes take `z-index: 0` and sit at the very bottom
 
-两者都只接受同源相对路径。传入带协议的完整 URL 会直接报错停下，不会去取——这个应用不做跨站转发。
+Obsidian is built the same way, which you can confirm by unpacking `obsidian.asar` and reading the class names in `app.css` — `canvas-node`, `canvas-node-container`, `canvas-edges`, `canvas-path-end`. This project reuses that naming.
 
-`vault` 之所以能默认推导：JSON Canvas 的 file 节点存的是 vault 根相对路径，而部署时最省事的布局是「一个 canvas 一个目录，canvas 文件就放在该目录的根上」，此时 canvas 所在目录正好就是 vault 根。本仓库的 `vault/` 就是这么一个目录：
+### Pan and zoom
 
-```
-vault/
-├── demo.canvas                        ← canvas 在 bundle 根上
-└── pages/Mathematics-数学/…            ← file 节点写的就是这个相对路径
-```
-
-对应链接是 `?canvas=vault/demo.canvas`，`vault` 参数可以省掉。
-
-要在一个站点上放多个 canvas，就并列多个这样的目录，各自独立：
-
-```
-?canvas=math/board.canvas         →  vault 根 = math/
-?canvas=roadmap/2026.canvas       →  vault 根 = roadmap/
-```
-
-只有 canvas 文件位于 vault 的子目录里时（在 Obsidian 里很常见，比如 canvas 放在 `boards/` 而笔记在 `pages/`），才需要显式写第二个参数，把根指回上层：
-
-```
-?canvas=notes/boards/plan.canvas&vault=notes/
-```
-
-漏写 `vault` 时的表现是：canvas 本身正常渲染，但每个 file 节点的卡片里显示「无法加载 …（HTTP 404）」——因为路径被解析到了 canvas 所在的子目录下。看到这个提示就说明该补 `vault` 参数了。
-
-## 实现
-
-### 为什么用 DOM + SVG，而不是 `<canvas>` 元素
-
-这里的 canvas 指 Obsidian 的白板功能，和 HTML5 的 `<canvas>` 位图画布无关。节点内容是渲染后的 markdown，需要文字选中、独立滚动、KaTeX 排版，这些能力在位图画布里都得从头重写。所以结构是：
-
-- 每个节点是一个绝对定位的 `div`，`left/top/width/height` 直接取 canvas 文件里节点的 `x/y/width/height`
-- 卡片内部是 flex 纵向布局：标题行 `flex: none` 固定在顶端，内容区 `flex: 1` 吃掉剩余高度并独立滚动
-- 所有边画在同一层 `<svg>` 里，`z-index` 压在节点之下
-- `group` 类型的节点 `z-index: 0`，垫在最底层
-
-Obsidian 本身也是这个结构：解包 `obsidian.asar` 后看 `app.css` 里的类名（`canvas-node`、`canvas-node-container`、`canvas-edges`、`canvas-path-end`）就能确认，本项目的类名沿用了这套命名。
-
-### 平移与缩放
-
-节点和边都装在同一个容器 `#canvas` 里，整体套一个变换：
+Nodes and edges share one container, `#canvas`, under a single transform:
 
 ```
 transform: translate(view.x, view.y) scale(view.zoom)
 ```
 
-屏幕坐标换算成画布坐标，就是这一行的逆运算：
+Converting a screen coordinate to a canvas coordinate is that line inverted:
 
 ```
-画布坐标 = (屏幕坐标 - view.x) / view.zoom
+canvas coordinate = (screen coordinate - view.x) / view.zoom
 ```
 
-以光标为锚点缩放（`zoomAt()`）的做法：先算出光标位置对应的画布坐标，改完 `view.zoom` 之后反解出新的 `view.x`、`view.y`，使同一个画布点仍然落在光标下。实测锚点漂移小于 0.001 画布像素。
+Zooming anchored at the cursor (`zoomAt()`) works by recording the canvas coordinate under the cursor, changing `view.zoom`, then solving for the `view.x` / `view.y` that put the same canvas point back under the cursor. Measured drift is under 0.001 canvas pixels.
 
-点阵背景不在这个变换里——它铺满整个视口，靠 `background-size` 跟着 `view.zoom` 放大、`background-position` 取平移量对 `GRID_SIZE * view.zoom` 的模来对齐。放在变换里的话，缩小时点阵会露出边界。
+The dot grid stays outside that transform. It covers the viewport and follows along through `background-size`, which scales with `view.zoom`, and `background-position`, which is the pan offset modulo `GRID_SIZE * view.zoom`. Inside the transform it would run out of its own bounds when zoomed out.
 
-### 边的形状
+### Edge shape
 
-Obsidian 边线那种 S 形来自控制点的取法：三次贝塞尔曲线的两个控制点，分别从起止锚点沿**所在边的外法线方向**推出去一段。
+The S-curve of an Obsidian edge comes from where the control points go: both control points of the cubic Bézier are pushed out from their anchors **along the outward normal of the side they leave from**.
 
 ```
-锚点   = 节点某条边的中点
-控制点 = 锚点 + 外法线 × offset
-offset = max(EDGE_MIN_CONTROL_OFFSET, 两锚点距离 × EDGE_CONTROL_RATIO)
+anchor        = midpoint of one side of a node
+control point = anchor + outward normal × offset
+offset        = max(EDGE_MIN_CONTROL_OFFSET, distance between anchors × EDGE_CONTROL_RATIO)
 ```
 
-箭头是一个三角形，尖端压在节点边框上、朝向节点内部。它比线宽宽得多，会直接盖住线条末端，所以不需要把贝塞尔曲线截短——省掉了在曲线上求参数点的那步。
+The arrowhead is a triangle with its tip on the node's border, pointing inwards. It is far wider than the stroke and covers the line's end outright, so the curve never has to be shortened — which saves solving for a point at a given parameter along it.
 
-JSON Canvas 允许省略 `fromSide`/`toSide`。缺失时按两个节点中心的相对位置推断该从哪条边出入（`inferSide()`）：水平距离不小于垂直距离就走左右边，否则走上下边。
+JSON Canvas allows `fromSide` / `toSide` to be omitted. When they are, `inferSide()` picks the sides facing the other node: left and right if the horizontal distance is at least the vertical one, top and bottom otherwise.
 
-### markdown 渲染管线
+### Markdown pipeline
 
-原文不能直接交给 marked：公式里的 `_`、`*`、`\` 会被当作下标、强调和转义符处理，`\alpha` 会被吃掉。所以先做一次扫描，把四类互斥的片段分开：
+Source text cannot go straight to marked: inside math, `_`, `*` and `\` get read as subscripts, emphasis and escapes, and `\alpha` disappears. So one scan first separates four mutually exclusive kinds of fragment:
 
 ```js
 /(```…```|`…`)|\$\$…\$\$|\$…\$|\[\[…\]\]/g
 ```
 
-正则的分支从左到右就是优先级：代码块和行内代码最优先，因此 `` `$x$` `` 保持字面量，与 Obsidian 一致；然后依次是块级公式、行内公式、wikilink。
+The alternation order is the precedence: fenced and inline code win, which keeps `` `$x$` `` literal exactly as Obsidian does, then display math, inline math and wikilinks.
 
-处理顺序：
+The steps:
 
-1. 公式替换成 `CANVASMATH<编号>ENDMATH` 形式的占位符。占位符只含字母和数字，不含任何 markdown 语法字符，marked 不会改动它
-2. wikilink 直接替换成 `<a>` 标签。marked 会原样透传行内 HTML，所以不需要占位符
-3. marked 解析全文
-4. 按占位符编号回填 KaTeX 的渲染结果。块级公式若被 marked 包进了独立的 `<p>`，先把这层 `<p>` 去掉，否则块级元素 `katex-display` 会嵌在段落里
+1. Math becomes a `CANVASMATH<n>ENDMATH` placeholder. Placeholders are letters and digits only, carry no markdown syntax, and marked leaves them alone
+2. Wikilinks become `<a>` tags directly — marked passes inline HTML through, so no placeholder is needed
+3. marked parses the whole text
+4. KaTeX output is substituted back by placeholder number. Display math that marked wrapped in its own `<p>` is unwrapped first, or the block-level `katex-display` would sit inside a paragraph
 
-`[[ 1 ]](#cite_note-1)` 这类维基百科导入残留，会渲染成一个链接加一段字面文本。Obsidian 的结果也是这样，属于原文本身的问题。
+Leftovers from Wikipedia imports such as `[[ 1 ]](#cite_note-1)` render as a link followed by literal text. Obsidian produces the same thing; the problem is in the source document.
 
-### file 节点的内容加载
+### Loading file node contents
 
-canvas 文件里存的是 vault 相对路径，例如 `pages/Mathematics-数学/形式导数.md`。部署目录按原样保留这个路径结构，再由上面那条规则算出 vault 根拼在前面，因此 canvas 文件一个字都不用改。
+A canvas stores vault-relative paths such as `pages/Mathematics-数学/形式导数.md`. The deployment directory keeps that path structure as-is, and the vault root worked out by the rule above is prefixed to it, so the canvas file itself never needs editing.
 
-路径含空格和中文，编码时按 `/` 切开、逐段 `encodeURIComponent` 再拼回去。不能对整串用 `encodeURI`，那样路径里的 `#` 不会被编码，会被当成 URL 片段分隔符。
+Paths contain spaces and non-ASCII characters. They are encoded by splitting on `/` and running `encodeURIComponent` per segment. `encodeURI` over the whole string would leave a `#` in a file name unencoded, and the URL would be cut short there.
 
-按扩展名分发：`.md` 进 markdown 管线，图片扩展名用 `<img>`，其余用 `<iframe>`。节点带 `subpath`（形如 `#某个标题`）时，先按标题层级把对应小节切出来再渲染。
+Dispatch is by extension: `.md` goes through the markdown pipeline, image extensions become an `<img>`, anything else an `<iframe>`. A node with a `subpath` such as `#Some heading` gets that section sliced out by heading level before rendering.
 
-## 用到的库
+## Tunable constants
 
-| 库 | 版本 | 用途 | 许可证 |
-|---|---|---|---|
-| [marked](https://github.com/markedjs/marked) | 12.0.2 | markdown 解析，开了 GFM（表格、删除线） | MIT |
-| [KaTeX](https://katex.org) | 0.16.11 | LaTeX 公式排版 | MIT |
+All at the top of `canvas-render.js`:
 
-两个库都内置在 `lib/` 下而不走 CDN，这样 demo 能离线打开——vault 本身就是本地的，渲染它却要联网说不过去。
-
-KaTeX 只保留了 CSS 里实际引用的 20 个 woff2 字体（296 KB）。同名的 woff 和 ttf 回退格式没有下载：它们在 `@font-face` 的 `src` 列表里排在 woff2 之后，现代浏览器取到 woff2 就不会再请求后面的格式。
-
-没有构建步骤，也没有 npm 依赖，`index.html` 用 `<script>` 和 `<link>` 直接加载这些文件。
-
-## 可调参数
-
-都在 `canvas-render.js` 顶部：
-
-| 常量 | 默认值 | 作用 |
+| Constant | Default | Effect |
 |---|---|---|
-| `EDGE_CONTROL_RATIO` | 0.35 | 边线弯曲程度，调大更圆滑 |
-| `ZOOM_WHEEL_SENSITIVITY` | 400 | 滚轮缩放灵敏度，调大更迟钝。一格鼠标滚轮（deltaY 120）对应 1.35 倍 |
-| `GRID_SIZE` | 20 | 点阵间距，与 Obsidian 一致 |
-| `MIN_ZOOM` / `MAX_ZOOM` | 0.1 / 3 | 缩放范围 |
-| `FIT_MAX_ZOOM` | 1 | 「适应」时的放大上限，避免内容少时被放到失真 |
-| `DEFAULT_CANVAS_PATH` | `vault/demo.canvas` | 未传 `?canvas=` 时加载的文件 |
+| `EDGE_CONTROL_RATIO` | 0.35 | How much edges bow; raise it for rounder curves |
+| `ZOOM_WHEEL_SENSITIVITY` | 400 | Wheel zoom sensitivity; raise it to slow zooming down. One mouse notch (deltaY 120) is 1.35× |
+| `GRID_SIZE` | 20 | Dot spacing, same as Obsidian |
+| `MIN_ZOOM` / `MAX_ZOOM` | 0.1 / 3 | Zoom range |
+| `FIT_MAX_ZOOM` | 1 | Upper bound when fitting, so sparse canvases are not blown up |
+| `DEFAULT_CANVAS_PATH` | `vault/demo.canvas` | Loaded when no `?canvas=` is given |
 
-## 目录
+## Repository layout
 
 ```
-index.html          页面骨架
-canvas-render.js    渲染器
-canvas-render.css   Obsidian 风格样式，明暗双主题
-lib/                marked 与 KaTeX
-serve.sh            起本地 web server
-sync-vault.sh       按 canvas 重新拷贝被引用的文件
-vault/              示例 bundle：canvas 文件加它引用的 markdown
+index.html          page skeleton
+canvas-render.js    the renderer
+canvas-render.css   Obsidian-like styling, light and dark
+lib/                marked and KaTeX
+serve.sh            local web server
+sync-vault.sh       re-copy the files a canvas references
+assets/             README images
+vault/              sample bundle: a canvas plus the notes it embeds
 ├── demo.canvas
 └── pages/Mathematics-数学/…
 ```
 
-上面六项是应用本身，`vault/` 是一份内容。部署时应用只需上传一次，之后每加一个 canvas 就并列加一个同构的目录。
+Everything above `vault/` is the application; `vault/` is content. Deploying means uploading the application once, then adding one more directory of the same shape per canvas.
 
-在 Obsidian 里给 canvas 加了节点之后，部署目录下的副本不会跟着变，页面会因为取不到文件而显示加载失败。这时跑一次同步脚本，它按 canvas 里的引用重新拷贝到该 canvas 所在的目录：
+## Third-party components
 
-```bash
-./sync-vault.sh                                  # 默认：从 .. 同步到 vault/demo.canvas 边上
-./sync-vault.sh ~/vault math/board.canvas        # 指定源 vault 和目标 canvas
-```
+The application code is licensed under [Apache-2.0](LICENSE). Bundled and redistributed under their own terms:
 
-文件在源 vault 里找不到会直接报错退出，不会静默漏掉。
+| Component | Version | Used for | License |
+|---|---|---|---|
+| [marked](https://github.com/markedjs/marked) | 12.0.2 | Markdown parsing, with GFM on for tables and strikethrough | [MIT](lib/LICENSE-marked) |
+| [KaTeX](https://katex.org) | 0.16.11 | LaTeX typesetting | [MIT](lib/LICENSE-katex) |
 
-## 支持范围
+Both are vendored under `lib/` rather than loaded from a CDN, so the page works offline — a vault is local, and needing the network to render it would be odd.
 
-节点：`text`、`file`、`link`、`group`。
-边：`fromSide`/`toSide`（可省略）、`fromEnd`/`toEnd` 箭头开关、`label`、`color`。
-颜色：Obsidian 的六个预设色（`"1"`–`"6"`）和自定义十六进制值。
+Only the 20 woff2 fonts the KaTeX stylesheet actually references are kept (296 KB). The matching woff and ttf fallbacks are not included: they come after woff2 in each `@font-face` `src` list, and a current browser stops at the first format it supports.
 
-两点没有实现：
+The sample notes under `vault/pages/` are adapted from Wikipedia and remain licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), separately from the Apache-2.0 application code. Each note names its source article at the bottom.
 
-- 块引用子路径 `#^blockid`——会渲染整篇文档
-- `[[wikilink]]` 只做样式，不能跳转
+## References
 
-## 交互
-
-拖动背景平移，拖动卡片正文则是选中文字；卡片内容超出高度时可以单独滚动。⌘/Ctrl + 滚轮或触控板双指捏合缩放，普通滚轮平移。左下角是缩放、适应、明暗主题按钮，主题选择存在 `localStorage`。
-
-file 和 link 节点的卡片顶端有一行标题，画在**卡片内部**，样式对齐 Obsidian 的 `.embed-title`：正文字号、字重 600、单行超出省略。file 节点显示去掉 `.md` 后缀的文件名，link 节点显示 URL。text 节点没有标题栏；group 的名字在框线**上方**，那是 Obsidian 的 `.canvas-node-label`，也是唯一画在卡片外的标签。
-
-标题是一个链接，点击在新标签页打开对应的 markdown 源文件（link 节点则打开它的 URL）。开新标签页是为了不丢掉当前画布的平移缩放位置。
-
-可点击区域精确等于标题文字加尾部图标，而不是整行：标题行是 flex 项，会撑满卡片宽度，但里面的 `<a>` 是 `inline-flex`，只包住内容。实测一张 320px 宽的卡片，标题行 318px，可点击部分 82px；按在标题右侧空白处的行为和按在卡片其他地方一样——平移画布，不会跳转。
-
-尾部那个外链图标不承担扩大命中区的作用，它只是提示「这一下会离开当前页」；单独拿图标当唯一入口反而更难点中。
-
-标题链接和卡片正文一样被排除在拖拽平移之外（`startsPan()`），否则 `setPointerCapture` 会把指针事件劫持到画布上，点击落不到链接。
-
-## 参考
-
-- [JSON Canvas 规范](https://github.com/obsidianmd/jsoncanvas)
-- [Obsidian 关于 JSON Canvas 的公告](https://obsidian.md/blog/json-canvas/)
+- [JSON Canvas specification](https://github.com/obsidianmd/jsoncanvas)
+- [Obsidian's JSON Canvas announcement](https://obsidian.md/blog/json-canvas/)
