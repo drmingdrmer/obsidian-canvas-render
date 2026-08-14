@@ -121,6 +121,22 @@ body {
   background-color: var(--canvas-node-background);
   box-shadow: var(--canvas-shadow);
   z-index: 2;
+  /* A card eases into a new size instead of jumping to it: long enough to be
+     followed, short enough that changing the card size still feels immediate.
+     `interpolate-size` is what lets a content-sized card animate at all, its
+     height being the keyword `auto`; browsers without it snap the height and
+     still ease the width. */
+  interpolate-size: allow-keywords;
+  transition:
+    width 150ms ease,
+    height 150ms ease,
+    max-height 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-node {
+    transition: none;
+  }
 }
 
 .canvas-node.is-dragging,
@@ -442,6 +458,23 @@ body {
 .canvas-control-item:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+
+/* The card size in force, in a group where every choice stays on show. */
+.canvas-control-item[aria-pressed="true"] {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+/* The bar carries three unrelated controls: the view's zoom, the size of every
+   card, and the theme. A rule marks where one ends and the next begins. */
+.canvas-control-divider {
+  width: 1px;
+  margin: 6px 4px;
+  /* The border colour is a hairline meant for edges, and reads as nothing in
+     the middle of a lit bar; the muted text grey is what the eye picks up. */
+  background: var(--text-faint);
 }
 
 /* ---------- single-file view: rendered note, or its markdown source ---------- */

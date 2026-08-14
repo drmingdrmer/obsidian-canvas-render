@@ -13,15 +13,15 @@ const THEME_STORAGE_KEY = 'canvas-render-theme'
 const CARD_SIZE_STORAGE_KEY = 'canvas-render-card-size'
 
 /**
- * What the card-size control offers, in the order it cycles through them.
- * `actual` draws every card at the size its file gives it. The other two ignore
- * that size, fix one width for the whole board and let the content set the
- * height, up to a cap that keeps a long note from towering over the rest.
+ * What the card-size control offers, one button each. `actual` draws every card
+ * at the size its file gives it. The other two ignore that size, fix one width
+ * for the whole board and let the content set the height, up to a cap that
+ * keeps a long note from towering over the rest.
  */
 const CARD_SIZES = {
-  actual: { label: 'Actual', width: null, maxHeight: null },
-  wide: { label: 'Wide', width: 520, maxHeight: 480 },
-  compact: { label: 'Compact', width: 320, maxHeight: 240 },
+  actual: { width: null, maxHeight: null },
+  wide: { width: 520, maxHeight: 480 },
+  compact: { width: 320, maxHeight: 240 },
 }
 
 const CARD_SIZE_NAMES = Object.keys(CARD_SIZES)
@@ -84,7 +84,7 @@ const zoomInEl = document.getElementById('zoom-in')
 const zoomOutEl = document.getElementById('zoom-out')
 const zoomResetEl = document.getElementById('zoom-reset')
 const zoomFitEl = document.getElementById('zoom-fit')
-const cardSizeEl = document.getElementById('card-size')
+const cardSizeEls = document.querySelectorAll('[data-card-size]')
 const themeToggleEls = document.querySelectorAll('.theme-toggle')
 const fileViewEl = document.getElementById('file-view')
 const fileViewPathEl = document.getElementById('file-view-path')
@@ -975,54 +975,61 @@ function applyNodeSize(el, node) {
   const authored = layout.authoredSizes.get(node.id)
   const keepsAuthoredSize = size.width === null || node.type === 'group'
 
+  // The cap is written even where nothing is capped, so that it is always a
+  // length: a card whose content overruns the cap takes its height from it, and
+  // `none` is not a value the browser can ease away from.
   if (keepsAuthoredSize) {
     node.width = authored.width
     node.height = authored.height
     el.style.width = `${authored.width}px`
     el.style.height = `${authored.height}px`
-    el.style.maxHeight = ''
+    el.style.maxHeight = `${authored.height}px`
     delete el.dataset.sized
     return
   }
 
   node.width = size.width
   el.style.width = `${size.width}px`
+  el.style.maxHeight = `${size.maxHeight}px`
 
   if (holdsEmbed(node)) {
     node.height = size.maxHeight
     el.style.height = `${size.maxHeight}px`
-    el.style.maxHeight = ''
     delete el.dataset.sized
     return
   }
 
   el.style.height = 'auto'
-  el.style.maxHeight = `${size.maxHeight}px`
   el.dataset.sized = 'content'
 }
 
 /**
  * One read pass, after every card has been written: the browser lays out once,
- * and the height each card settled on goes back into the node data, which the
+ * and the size each card settled on goes back into the node data, which the
  * edges, the edge layer and the fit are all computed from.
  */
-function readCardHeights() {
+function readCardSizes() {
   for (const node of layout.nodes) {
-    node.height = layout.elements.get(node.id).offsetHeight
+    const el = layout.elements.get(node.id)
+    node.width = el.offsetWidth
+    node.height = el.offsetHeight
   }
 }
 
 /**
  * A content-sized card knows its height only once the browser has laid it out,
- * and again whenever a note, an image or a formula lands. The node data follows
- * the element, and everything computed from the box is redone — including the
- * fit, for as long as the view is still the one this page fitted.
+ * again whenever a note, an image or a formula lands, and on every frame of the
+ * transition that eases it into a new size. The node data follows the element,
+ * and everything computed from the box is redone — including the fit, for as
+ * long as the view is still the one this page fitted.
  */
-function observeCardHeight(el, node) {
+function observeCardSize(el, node) {
   const observer = new ResizeObserver(() => {
+    const width = el.offsetWidth
     const height = el.offsetHeight
-    if (height === node.height) return
+    if (width === node.width && height === node.height) return
 
+    node.width = width
     node.height = height
     relayoutNodeEdges(node)
 
@@ -1033,14 +1040,26 @@ function observeCardHeight(el, node) {
   observer.observe(el)
 }
 
-/** Re-draws every card at the named size, then re-routes the edges and refits. */
+/** Shows which of the three sizes the board is drawn at. */
+function markCardSizeControl(sizeName) {
+  for (const el of cardSizeEls) {
+    el.setAttribute('aria-pressed', String(el.dataset.cardSize === sizeName))
+  }
+}
+
+/**
+ * Re-draws every card at the named size, then re-routes the edges and refits.
+ * Cards ease into the new size rather than snap to it, so these are the sizes
+ * they are heading for; `observeCardSize` follows the transition frame by frame
+ * and brings the edges, the layer and the fit along with it.
+ */
 function applyCardSize(sizeName) {
   config.cardSize = sizeName
   localStorage.setItem(CARD_SIZE_STORAGE_KEY, sizeName)
-  cardSizeEl.textContent = CARD_SIZES[sizeName].label
+  markCardSizeControl(sizeName)
 
   for (const node of layout.nodes) applyNodeSize(layout.elements.get(node.id), node)
-  readCardHeights()
+  readCardSizes()
   // Both endpoints have to hold their new box before an edge between them is routed.
   for (const node of layout.nodes) relayoutNodeEdges(node)
 
@@ -1064,12 +1083,14 @@ function preferredCardSize(params) {
 }
 
 function installCardSizeControl() {
-  cardSizeEl.textContent = CARD_SIZES[config.cardSize].label
-  cardSizeEl.addEventListener('click', () => {
-    const current = CARD_SIZE_NAMES.indexOf(config.cardSize)
-    const next = CARD_SIZE_NAMES[(current + 1) % CARD_SIZE_NAMES.length]
-    applyCardSize(next)
-  })
+  markCardSizeControl(config.cardSize)
+  for (const el of cardSizeEls) {
+    el.addEventListener('click', () => {
+      // Pressing the size already in force would refit the view for nothing.
+      if (el.dataset.cardSize === config.cardSize) return
+      applyCardSize(el.dataset.cardSize)
+    })
+  }
 }
 
 // ------------------------------------------------------------------- drawing
@@ -1115,11 +1136,11 @@ function drawCanvas(data) {
     const el = createNodeElement(node)
     layout.elements.set(node.id, el)
     installNodeDrag(node, el)
-    observeCardHeight(el, node)
+    observeCardSize(el, node)
     canvasEl.appendChild(el)
   }
 
-  readCardHeights()
+  readCardSizes()
   resizeEdgeLayer(contentBounds(nodes))
 
   for (const edge of edges) {
