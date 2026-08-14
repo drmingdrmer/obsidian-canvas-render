@@ -769,9 +769,37 @@ function viewIsAsFitted() {
   return samePan && view.zoom === fittedView.zoom
 }
 
-/** Node content scrolls and selects text on its own; everything else pans. */
-function isInsideNodeContent(target) {
-  return target instanceof Element && target.closest('.canvas-node-content') !== null
+/** The card a press put the focus on, or null while the focus is on the board. */
+let focusedCardEl = null
+
+/**
+ * A press decides what the wheel drives from then on: a card, or the board.
+ * Without that, a card sliding under a still pointer during a wheel pan would
+ * take the rest of the gesture over, which is what a reader paging through a
+ * board never means.
+ *
+ * The controls are neither: pressing one leaves the focus where the reader put it.
+ */
+function focusOnPress(target) {
+  if (!(target instanceof Element)) return
+  if (target.closest('.canvas-controls') !== null) return
+
+  const cardEl = target.closest('.canvas-node')
+  if (cardEl === focusedCardEl) return
+
+  if (focusedCardEl !== null) delete focusedCardEl.dataset.focused
+  focusedCardEl = cardEl
+  if (cardEl !== null) cardEl.dataset.focused = 'true'
+}
+
+/** A wheel scrolls a card's content only over the card the focus is on. */
+function wheelScrollsCard(target) {
+  if (focusedCardEl === null) return false
+  if (!(target instanceof Element)) return false
+
+  const contentEl = target.closest('.canvas-node-content')
+  if (contentEl === null) return false
+  return contentEl.closest('.canvas-node') === focusedCardEl
 }
 
 /**
@@ -792,6 +820,10 @@ function installViewportControls() {
   let panPointerId = null
   let panOriginX = 0
   let panOriginY = 0
+
+  // In the capture phase, so that presses a card handles itself — its title
+  // bar, its resize grip — still move the focus onto it.
+  wrapperEl.addEventListener('pointerdown', event => focusOnPress(event.target), true)
 
   wrapperEl.addEventListener('pointerdown', event => {
     if (event.button !== 0 && event.button !== 1) return
@@ -832,7 +864,7 @@ function installViewportControls() {
         return
       }
 
-      if (isInsideNodeContent(event.target)) return
+      if (wheelScrollsCard(event.target)) return
 
       event.preventDefault()
       view.x -= event.deltaX

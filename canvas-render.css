@@ -168,6 +168,13 @@ body {
   opacity: 0.75;
 }
 
+/* The card the reader pressed last: the one a wheel scrolls, while every other
+   wheel moves the board. Without a mark, that state would be invisible. */
+.canvas-node[data-focused="true"] {
+  border-color: var(--text-accent);
+  box-shadow: 0 0 0 1px var(--text-accent), var(--canvas-shadow);
+}
+
 .canvas-node[data-colored="true"] {
   background-color: color-mix(in srgb, var(--node-color) var(--canvas-color-tint), var(--canvas-node-background));
 }

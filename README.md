@@ -72,7 +72,9 @@ Block-reference subpaths `#^blockid` render the whole document, and `[[wikilinks
 
 A card moves by its title row alone, and its edges follow; every other part of it is left to select, scroll and click. Pressing a group's frame moves the group together with every card the frame encloses, fixed at the moment the drag starts. Positions are not written back to the file: a reload restores the layout the `.canvas` stores. A text card is moved by its header strip; a text card that has no header — its content reaches the border — stays where the file puts it.
 
-Dragging a card's body selects text rather than moving the card, and a card whose content overflows scrolls on its own. Dragging anywhere else pans. A plain wheel pans; ⌘/Ctrl + wheel or a trackpad pinch zooms.
+Dragging a card's body selects text rather than moving the card. Dragging anywhere else pans. ⌘/Ctrl + wheel or a trackpad pinch zooms.
+
+A plain wheel moves the board, and moves it wherever the pointer happens to be — a card that slides under a still pointer mid-gesture cannot take the rest of that gesture over. Pressing a card puts the focus on it, marked by an accent border, and a wheel over that one card then scrolls its content; pressing the board takes the focus back, and the wheel moves the board again.
 
 A card is resized by the grip in its bottom-right corner, which shows while the pointer is on that card and stops at 120 × 60. Resizing one under `Wide` or `Compact` takes it out of the uniform size and fixes its height, content or not; pressing that same size button again puts the whole board back under it.
 
