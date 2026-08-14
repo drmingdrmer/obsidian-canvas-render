@@ -10,6 +10,21 @@
 
 const DEFAULT_CANVAS_PATH = 'vault/demo.canvas'
 const THEME_STORAGE_KEY = 'canvas-render-theme'
+const CARD_SIZE_STORAGE_KEY = 'canvas-render-card-size'
+
+/**
+ * What the card-size control offers, in the order it cycles through them.
+ * `actual` draws every card at the size its file gives it. The other two ignore
+ * that size, fix one width for the whole board and let the content set the
+ * height, up to a cap that keeps a long note from towering over the rest.
+ */
+const CARD_SIZES = {
+  actual: { label: 'Actual', width: null, maxHeight: null },
+  wide: { label: 'Wide', width: 520, maxHeight: 480 },
+  compact: { label: 'Compact', width: 320, maxHeight: 240 },
+}
+
+const CARD_SIZE_NAMES = Object.keys(CARD_SIZES)
 
 /**
  * Hosts besides this page's own origin that a canvas, a vault or a note may be
@@ -69,6 +84,7 @@ const zoomInEl = document.getElementById('zoom-in')
 const zoomOutEl = document.getElementById('zoom-out')
 const zoomResetEl = document.getElementById('zoom-reset')
 const zoomFitEl = document.getElementById('zoom-fit')
+const cardSizeEl = document.getElementById('card-size')
 const themeToggleEls = document.querySelectorAll('.theme-toggle')
 const fileViewEl = document.getElementById('file-view')
 const fileViewPathEl = document.getElementById('file-view-path')
@@ -80,11 +96,18 @@ const fileViewBodyEl = document.getElementById('file-view-body')
 /** Screen position of canvas origin, plus the current scale factor. */
 const view = { x: 0, y: 0, zoom: 1 }
 
-/** Read from the URL query once at startup, then fixed for the life of the page. */
-const config = { vaultRoot: '' }
+/** The view as `fitToContent` last left it; a pan or a zoom by the reader makes it stale. */
+let fittedView = null
 
-/** The drawn canvas: node data, the element each node was drawn as, and the edges on it. */
-const layout = { nodes: [], elements: new Map(), edgesByNode: new Map() }
+/** Read from the URL query at startup; the card size then follows its control. */
+const config = { vaultRoot: '', cardSize: 'actual' }
+
+/**
+ * The drawn canvas: node data, the element each node was drawn as, the edges on
+ * it, and the sizes the file authored — which the node data no longer holds
+ * once a card is drawn at a size of its own.
+ */
+const layout = { nodes: [], elements: new Map(), edgesByNode: new Map(), authoredSizes: new Map() }
 
 // --------------------------------------------------------------------- theme
 
@@ -435,7 +458,7 @@ function fillFileNode(contentEl, node) {
     return
   }
 
-  if (extension !== 'md') {
+  if (holdsEmbed(node)) {
     const frame = document.createElement('iframe')
     frame.className = 'canvas-node-embed'
     frame.src = vaultUrl(node.file)
@@ -583,8 +606,7 @@ function createNodeElement(node) {
   el.dataset.type = node.type
   el.style.left = `${node.x}px`
   el.style.top = `${node.y}px`
-  el.style.width = `${node.width}px`
-  el.style.height = `${node.height}px`
+  applyNodeSize(el, node)
 
   const color = resolveColor(node.color)
   if (color) {
@@ -732,6 +754,15 @@ function fitToContent(bounds) {
   view.x = rect.width / 2 - (bounds.minX + contentWidth / 2) * view.zoom
   view.y = rect.height / 2 - (bounds.minY + contentHeight / 2) * view.zoom
   applyView()
+  fittedView = { x: view.x, y: view.y, zoom: view.zoom }
+}
+
+/** True while the view is still the one that was fitted, untouched since. */
+function viewIsAsFitted() {
+  if (fittedView === null) return false
+
+  const samePan = view.x === fittedView.x && view.y === fittedView.y
+  return samePan && view.zoom === fittedView.zoom
 }
 
 /** Node content scrolls and selects text on its own; everything else pans. */
@@ -740,12 +771,17 @@ function isInsideNodeContent(target) {
 }
 
 /**
- * Card content scrolls and selects text, and a card title is a link: a press on
- * either neither pans the viewport nor drags the card it belongs to.
+ * Card content scrolls and selects text, a card title is a link, and the
+ * controls are buttons: a press on any of them neither pans the viewport nor
+ * drags the card it belongs to.
+ *
+ * Leaving the controls out of this would make them unclickable rather than
+ * merely draggable: the pan captures the pointer, capture retargets the mouse
+ * events a click is derived from, and the button never sees the click.
  */
 function isInteractiveTarget(target) {
   if (!(target instanceof Element)) return false
-  return target.closest('.canvas-node-content, .canvas-node-title-link') !== null
+  return target.closest('.canvas-node-content, .canvas-node-title-link, .canvas-controls') !== null
 }
 
 function installViewportControls() {
@@ -829,6 +865,13 @@ function movedNodes(node) {
   return [node].concat(contained)
 }
 
+/** Re-routes every edge attached to a node whose box has just changed. */
+function relayoutNodeEdges(node) {
+  const attached = layout.edgesByNode.get(node.id)
+  if (!attached) return
+  for (const record of attached) layoutEdge(record)
+}
+
 /** Moves a node in the data and in the DOM, and re-routes the edges attached to it. */
 function placeNode(node, x, y) {
   node.x = x
@@ -838,9 +881,7 @@ function placeNode(node, x, y) {
   el.style.left = `${x}px`
   el.style.top = `${y}px`
 
-  const attached = layout.edgesByNode.get(node.id)
-  if (!attached) return
-  for (const record of attached) layoutEdge(record)
+  relayoutNodeEdges(node)
 }
 
 /**
@@ -903,6 +944,134 @@ function installNodeDrag(node, el) {
   el.addEventListener('pointercancel', endDrag)
 }
 
+// ----------------------------------------------------------------- card size
+
+/**
+ * A link, and a file the browser can only frame, are drawn in an iframe, which
+ * has no height of its own: such a card cannot be sized by its content, and is
+ * given the cap as its height instead.
+ */
+function holdsEmbed(node) {
+  if (node.type === 'link') return true
+  if (node.type !== 'file') return false
+
+  const extension = fileExtension(node.file)
+  if (extension === 'md') return false
+  return !IMAGE_EXTENSIONS.includes(extension)
+}
+
+/**
+ * Sizes one card. `actual` restores the size the file authored; the other modes
+ * fix the width for the whole board and leave the height to the content, capped.
+ * A group keeps its authored size in every mode: a frame marks out a region of
+ * the board rather than holding content that could size it.
+ *
+ * The node data is rewritten to match, because edge anchors, group membership
+ * and the fit all read a node's box out of it. Nothing is written back to the
+ * file, so a reload restores the authored sizes.
+ */
+function applyNodeSize(el, node) {
+  const size = CARD_SIZES[config.cardSize]
+  const authored = layout.authoredSizes.get(node.id)
+  const keepsAuthoredSize = size.width === null || node.type === 'group'
+
+  if (keepsAuthoredSize) {
+    node.width = authored.width
+    node.height = authored.height
+    el.style.width = `${authored.width}px`
+    el.style.height = `${authored.height}px`
+    el.style.maxHeight = ''
+    delete el.dataset.sized
+    return
+  }
+
+  node.width = size.width
+  el.style.width = `${size.width}px`
+
+  if (holdsEmbed(node)) {
+    node.height = size.maxHeight
+    el.style.height = `${size.maxHeight}px`
+    el.style.maxHeight = ''
+    delete el.dataset.sized
+    return
+  }
+
+  el.style.height = 'auto'
+  el.style.maxHeight = `${size.maxHeight}px`
+  el.dataset.sized = 'content'
+}
+
+/**
+ * One read pass, after every card has been written: the browser lays out once,
+ * and the height each card settled on goes back into the node data, which the
+ * edges, the edge layer and the fit are all computed from.
+ */
+function readCardHeights() {
+  for (const node of layout.nodes) {
+    node.height = layout.elements.get(node.id).offsetHeight
+  }
+}
+
+/**
+ * A content-sized card knows its height only once the browser has laid it out,
+ * and again whenever a note, an image or a formula lands. The node data follows
+ * the element, and everything computed from the box is redone — including the
+ * fit, for as long as the view is still the one this page fitted.
+ */
+function observeCardHeight(el, node) {
+  const observer = new ResizeObserver(() => {
+    const height = el.offsetHeight
+    if (height === node.height) return
+
+    node.height = height
+    relayoutNodeEdges(node)
+
+    const bounds = contentBounds(layout.nodes)
+    resizeEdgeLayer(bounds)
+    if (viewIsAsFitted()) fitToContent(bounds)
+  })
+  observer.observe(el)
+}
+
+/** Re-draws every card at the named size, then re-routes the edges and refits. */
+function applyCardSize(sizeName) {
+  config.cardSize = sizeName
+  localStorage.setItem(CARD_SIZE_STORAGE_KEY, sizeName)
+  cardSizeEl.textContent = CARD_SIZES[sizeName].label
+
+  for (const node of layout.nodes) applyNodeSize(layout.elements.get(node.id), node)
+  readCardHeights()
+  // Both endpoints have to hold their new box before an edge between them is routed.
+  for (const node of layout.nodes) relayoutNodeEdges(node)
+
+  const bounds = contentBounds(layout.nodes)
+  resizeEdgeLayer(bounds)
+  fitToContent(bounds)
+}
+
+/** The `cards` parameter names a size for one page load; the control persists a choice. */
+function preferredCardSize(params) {
+  const requested = params.get('cards')
+  if (requested !== null) {
+    if (requested in CARD_SIZES) return requested
+    const names = CARD_SIZE_NAMES.join(', ')
+    throw new Error(`the cards parameter accepts ${names}, got ${requested}`)
+  }
+
+  const stored = localStorage.getItem(CARD_SIZE_STORAGE_KEY)
+  if (stored !== null && stored in CARD_SIZES) return stored
+  return 'actual'
+}
+
+function installCardSizeControl() {
+  cardSizeEl.textContent = CARD_SIZES[config.cardSize].label
+  cardSizeEl.addEventListener('click', () => {
+    const current = CARD_SIZE_NAMES.indexOf(config.cardSize)
+    const next = CARD_SIZE_NAMES[(current + 1) % CARD_SIZE_NAMES.length]
+    applyCardSize(next)
+  })
+}
+
 // ------------------------------------------------------------------- drawing
 
 /** The SVG layer keeps a margin around the nodes so bowed edges are not clipped. */
@@ -935,6 +1104,9 @@ function drawCanvas(data) {
   const edges = Array.isArray(data.edges) ? data.edges : []
   const nodesById = new Map(nodes.map(node => [node.id, node]))
   layout.nodes = nodes
+  for (const node of nodes) {
+    layout.authoredSizes.set(node.id, { width: node.width, height: node.height })
+  }
 
   // Groups first so they sit behind; within each class the file order is the z-order.
   const groups = nodes.filter(node => node.type === 'group')
@@ -943,9 +1115,11 @@ function drawCanvas(data) {
     const el = createNodeElement(node)
     layout.elements.set(node.id, el)
     installNodeDrag(node, el)
+    observeCardHeight(el, node)
     canvasEl.appendChild(el)
   }
 
+  readCardHeights()
   resizeEdgeLayer(contentBounds(nodes))
 
   for (const edge of edges) {
@@ -1065,6 +1239,7 @@ async function main() {
   const canvasPath = params.get('canvas') || DEFAULT_CANVAS_PATH
   assertAllowedHost(canvasPath, 'canvas')
   config.vaultRoot = resolveVaultRoot(params, canvasPath)
+  config.cardSize = preferredCardSize(params)
 
   showStatus(`Loading ${canvasPath} …`)
   const response = await fetchFile(encodePath(canvasPath))
@@ -1076,6 +1251,7 @@ async function main() {
   drawCanvas(data)
   fitToContent(contentBounds(layout.nodes))
   installViewportControls()
+  installCardSizeControl()
 }
 
 main().catch(error => {

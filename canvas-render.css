@@ -230,6 +230,12 @@ body {
   padding-top: 0;
 }
 
+/* A card sized by its content is as tall as its body, so the body cannot take
+   its height from the card; it keeps the right to shrink once the cap bites. */
+.canvas-node[data-sized="content"] .canvas-node-content {
+  flex: 0 1 auto;
+}
+
 /* Images and iframes fill the card instead of sitting in a text column. */
 .canvas-node-content[data-fill="true"] {
   padding: 0;

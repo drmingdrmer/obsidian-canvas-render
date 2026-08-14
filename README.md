@@ -34,8 +34,9 @@ Any static host serves the repository as-is. On GitHub Pages, **keep the `.nojek
 | `vault` | The vault root that file nodes resolve against. Defaults to the directory holding the canvas file |
 | `note` | Render a single markdown file on its own, for reading, instead of a canvas |
 | `raw` | Show a single markdown file as plain source |
+| `cards` | Draw every card at one size — `actual`, `wide` or `compact` — instead of the size each card stores |
 
-All four take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is rendered with `innerHTML`, so whichever host serves one can run script in this page's origin.
+`canvas`, `vault`, `note` and `raw` each take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is rendered with `innerHTML`, so whichever host serves one can run script in this page's origin.
 
 File nodes store paths relative to the vault root, so a canvas sitting at the root of its own directory needs no `vault` — that is how `?canvas=vault/demo.canvas` works here. Name the root explicitly when the canvas sits deeper in the vault, as it does in Obsidian when boards go in `boards/` and notes in `pages/`:
 
@@ -74,6 +75,8 @@ A card moves by its title row alone, and its edges follow; every other part of i
 Dragging a card's body selects text rather than moving the card, and a card whose content overflows scrolls on its own. Dragging anywhere else pans. A plain wheel pans; ⌘/Ctrl + wheel or a trackpad pinch zooms.
 
 A file card's title row carries two links: the title text opens the note rendered for reading (`?note=`), and the `</>` icon beside it opens the same file's markdown source (`?raw=`). A link card's title points at its URL.
+
+Every card is drawn at the size its file gives it, and the control beside `Fit` offers two board-wide alternatives to that: `Wide` draws every card 520 px across and `Compact` 320 px, with the content setting the height in both — capped at 480 px and 240 px, so a long note scrolls inside its card rather than towering over the board. A card holding an image is as tall as the image needs, and one holding an iframe takes the cap, an iframe having no height of its own. Group frames keep the size the file gives them, since a frame marks out a region of the board. The choice is remembered across visits, and `?cards=wide` names one for a single load. Nothing moves: every card keeps its stored position, so a card that grows can overlap its neighbour until it is dragged aside.
 
 ## Files
 
