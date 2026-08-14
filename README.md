@@ -74,7 +74,9 @@ A card moves by its title row alone, and its edges follow; every other part of i
 
 Dragging a card's body selects text rather than moving the card, and a card whose content overflows scrolls on its own. Dragging anywhere else pans. A plain wheel pans; ⌘/Ctrl + wheel or a trackpad pinch zooms.
 
-`Grid` lands a dragged card on the 20 px grid the background dots mark out, so cards line up with each other without being nudged into place. The card under the pointer is the one that aligns; a group's frame aligns and carries its contents along at their own offsets. Cards already on the board are left where they are until something is dragged, and the choice is remembered across visits.
+A card is resized by the grip in its bottom-right corner, which shows while the pointer is on that card and stops at 120 × 60. Resizing one under `Wide` or `Compact` takes it out of the uniform size and fixes its height, content or not; pressing that same size button again puts the whole board back under it.
+
+`Grid` lands a dragged card on the 20 px grid the background dots mark out, so cards line up with each other without being nudged into place. The card under the pointer is the one that aligns; a group's frame aligns and carries its contents along at their own offsets. A resize grip aligns the corner it drags, which is what has to meet the neighbours — the card's own origin may sit off the grid. Cards already on the board are left where they are until something is dragged, and the choice is remembered across visits.
 
 A file card's title row carries two links: the title text opens the note rendered for reading (`?note=`), and the `</>` icon beside it opens the same file's markdown source (`?raw=`). A link card's title points at its URL.
 

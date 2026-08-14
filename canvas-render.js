@@ -36,6 +36,8 @@ const CARD_SIZE_NAMES = Object.keys(CARD_SIZES)
 const REMOTE_HOSTS = ['raw.githubusercontent.com']
 
 const GRID_SIZE = 20
+const MIN_CARD_WIDTH = 120
+const MIN_CARD_HEIGHT = 60
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 3
 const ZOOM_STEP = 1.15
@@ -887,6 +889,30 @@ function placeNode(node, x, y) {
 }
 
 /**
+ * Resizes a node in the data and in the DOM, and re-routes the edges attached
+ * to it. A card whose height was following its content stops following it: the
+ * reader has just said how tall the card is to be. Pressing a card size puts
+ * the whole board back under that size.
+ */
+function sizeNode(node, width, height) {
+  node.width = width
+  node.height = height
+
+  const el = layout.elements.get(node.id)
+  el.style.width = `${width}px`
+  el.style.height = `${height}px`
+  el.style.maxHeight = `${height}px`
+  delete el.dataset.sized
+
+  relayoutNodeEdges(node)
+}
+
+/** From here on the reader arranges the board, so nothing re-fits the view for them. */
+function releaseAutoFit() {
+  fittedView = null
+}
+
+/**
  * Only a title bar moves a card: the rest of it has to stay free for selecting
  * text, scrolling and following links. A group is all frame and holds no
  * content of its own, so any point on it drags.
@@ -908,9 +934,14 @@ function startsDrag(target, node) {
 function dragOffset(lead, dx, dy) {
   if (!config.snapToGrid) return { dx: dx, dy: dy }
 
-  const snappedX = Math.round((lead.startX + dx) / GRID_SIZE) * GRID_SIZE
-  const snappedY = Math.round((lead.startY + dy) / GRID_SIZE) * GRID_SIZE
+  const snappedX = nearestGridLine(lead.startX + dx)
+  const snappedY = nearestGridLine(lead.startY + dy)
   return { dx: snappedX - lead.startX, dy: snappedY - lead.startY }
+}
+
+/** The grid line nearest a canvas coordinate. */
+function nearestGridLine(value) {
+  return Math.round(value / GRID_SIZE) * GRID_SIZE
 }
 
 /** Turns the grid on or off for later drags, and remembers the choice. */
@@ -944,6 +975,7 @@ function installNodeDrag(node, el) {
     originX = event.clientX
     originY = event.clientY
     dragged = movedNodes(node).map(moved => ({ node: moved, startX: moved.x, startY: moved.y }))
+    releaseAutoFit()
 
     el.setPointerCapture(dragPointerId)
     el.classList.add('is-dragging')
@@ -972,6 +1004,82 @@ function installNodeDrag(node, el) {
   }
   el.addEventListener('pointerup', endDrag)
   el.addEventListener('pointercancel', endDrag)
+}
+
+/**
+ * Where a resize drag leaves the card. The corner under the pointer is what the
+ * grid catches, not the width: a card's own origin may sit off the grid, and it
+ * is the edge being moved that has to line up with its neighbours. No card goes
+ * below the minimum, which is a whole number of grid cells either way.
+ */
+function resizedSize(node, width, height) {
+  let targetWidth = width
+  let targetHeight = height
+
+  if (config.snapToGrid) {
+    targetWidth = nearestGridLine(node.x + width) - node.x
+    targetHeight = nearestGridLine(node.y + height) - node.y
+  }
+
+  return {
+    width: Math.max(targetWidth, MIN_CARD_WIDTH),
+    height: Math.max(targetHeight, MIN_CARD_HEIGHT),
+  }
+}
+
+/**
+ * The grip in a card's bottom-right corner resizes it, the way the title row
+ * moves it: the press is kept off the wrapper, so the board neither pans nor
+ * drags the card along with the resize.
+ */
+function installNodeResize(node, el) {
+  const handleEl = document.createElement('div')
+  handleEl.className = 'canvas-node-resize'
+  el.appendChild(handleEl)
+
+  let resizePointerId = null
+  let originX = 0
+  let originY = 0
+  let startWidth = 0
+  let startHeight = 0
+
+  handleEl.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return
+
+    resizePointerId = event.pointerId
+    originX = event.clientX
+    originY = event.clientY
+    startWidth = node.width
+    startHeight = node.height
+    releaseAutoFit()
+
+    handleEl.setPointerCapture(resizePointerId)
+    el.classList.add('is-resizing')
+    event.stopPropagation()
+    event.preventDefault()
+  })
+
+  handleEl.addEventListener('pointermove', event => {
+    if (event.pointerId !== resizePointerId) return
+
+    // A screen pixel is one canvas unit divided by the zoom factor.
+    const dx = (event.clientX - originX) / view.zoom
+    const dy = (event.clientY - originY) / view.zoom
+    const size = resizedSize(node, startWidth + dx, startHeight + dy)
+    sizeNode(node, size.width, size.height)
+
+    // A card grown past the layer's edge would have its edges clipped.
+    resizeEdgeLayer(contentBounds(layout.nodes))
+  })
+
+  const endResize = event => {
+    if (event.pointerId !== resizePointerId) return
+    handleEl.releasePointerCapture(resizePointerId)
+    el.classList.remove('is-resizing')
+    resizePointerId = null
+  }
+  handleEl.addEventListener('pointerup', endResize)
+  handleEl.addEventListener('pointercancel', endResize)
 }
 
 // ----------------------------------------------------------------- card size
@@ -1115,11 +1223,8 @@ function preferredCardSize(params) {
 function installCardSizeControl() {
   markCardSizeControl(config.cardSize)
   for (const el of cardSizeEls) {
-    el.addEventListener('click', () => {
-      // Pressing the size already in force would refit the view for nothing.
-      if (el.dataset.cardSize === config.cardSize) return
-      applyCardSize(el.dataset.cardSize)
-    })
+    // Pressing the size already in force puts cards resized by hand back under it.
+    el.addEventListener('click', () => applyCardSize(el.dataset.cardSize))
   }
 }
 
@@ -1166,6 +1271,7 @@ function drawCanvas(data) {
     const el = createNodeElement(node)
     layout.elements.set(node.id, el)
     installNodeDrag(node, el)
+    installNodeResize(node, el)
     observeCardSize(el, node)
     canvasEl.appendChild(el)
   }

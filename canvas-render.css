@@ -144,6 +144,30 @@ body {
   cursor: grabbing;
 }
 
+/* A card being resized has to keep up with the pointer, not ease after it. */
+.canvas-node.is-resizing {
+  transition: none;
+}
+
+/* The grip that resizes a card. Hidden until the pointer is on that card: a
+   board of fifty cards would otherwise carry fifty corner marks. */
+.canvas-node-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  border-bottom-right-radius: inherit;
+  background: repeating-linear-gradient(-45deg, var(--text-faint) 0 1.5px, transparent 1.5px 4px);
+  opacity: 0;
+  cursor: nwse-resize;
+}
+
+.canvas-node:hover .canvas-node-resize,
+.canvas-node.is-resizing .canvas-node-resize {
+  opacity: 0.75;
+}
+
 .canvas-node[data-colored="true"] {
   background-color: color-mix(in srgb, var(--node-color) var(--canvas-color-tint), var(--canvas-node-background));
 }
