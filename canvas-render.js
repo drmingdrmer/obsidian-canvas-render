@@ -11,6 +11,7 @@
 const DEFAULT_CANVAS_PATH = 'vault/demo.canvas'
 const THEME_STORAGE_KEY = 'canvas-render-theme'
 const CARD_SIZE_STORAGE_KEY = 'canvas-render-card-size'
+const GRID_SNAP_STORAGE_KEY = 'canvas-render-grid-snap'
 
 /**
  * What the card-size control offers, one button each. `actual` draws every card
@@ -85,6 +86,7 @@ const zoomOutEl = document.getElementById('zoom-out')
 const zoomResetEl = document.getElementById('zoom-reset')
 const zoomFitEl = document.getElementById('zoom-fit')
 const cardSizeEls = document.querySelectorAll('[data-card-size]')
+const gridSnapEl = document.getElementById('grid-snap')
 const themeToggleEls = document.querySelectorAll('.theme-toggle')
 const fileViewEl = document.getElementById('file-view')
 const fileViewPathEl = document.getElementById('file-view-path')
@@ -99,8 +101,8 @@ const view = { x: 0, y: 0, zoom: 1 }
 /** The view as `fitToContent` last left it; a pan or a zoom by the reader makes it stale. */
 let fittedView = null
 
-/** Read from the URL query at startup; the card size then follows its control. */
-const config = { vaultRoot: '', cardSize: 'actual' }
+/** Read from the URL query at startup; the card size and the grid follow their controls. */
+const config = { vaultRoot: '', cardSize: 'actual', snapToGrid: false }
 
 /**
  * The drawn canvas: node data, the element each node was drawn as, the edges on
@@ -897,6 +899,33 @@ function startsDrag(target, node) {
 }
 
 /**
+ * How far the cards under a drag actually move. With the grid off, that is the
+ * pointer's own travel. With it on, the pressed card's top-left corner goes to
+ * the nearest grid intersection, and every card carried along with it keeps its
+ * offset from that corner — a group lands on the grid without being rearranged
+ * inside.
+ */
+function dragOffset(lead, dx, dy) {
+  if (!config.snapToGrid) return { dx: dx, dy: dy }
+
+  const snappedX = Math.round((lead.startX + dx) / GRID_SIZE) * GRID_SIZE
+  const snappedY = Math.round((lead.startY + dy) / GRID_SIZE) * GRID_SIZE
+  return { dx: snappedX - lead.startX, dy: snappedY - lead.startY }
+}
+
+/** Turns the grid on or off for later drags, and remembers the choice. */
+function applyGridSnap(enabled) {
+  config.snapToGrid = enabled
+  localStorage.setItem(GRID_SNAP_STORAGE_KEY, String(enabled))
+  gridSnapEl.setAttribute('aria-pressed', String(enabled))
+}
+
+function installGridSnapControl() {
+  applyGridSnap(localStorage.getItem(GRID_SNAP_STORAGE_KEY) === 'true')
+  gridSnapEl.addEventListener('click', () => applyGridSnap(!config.snapToGrid))
+}
+
+/**
  * A press on a card's title bar moves the card. The wrapper never sees that
  * press, so the background still pans, and everything else on the card is left
  * to scroll, select and navigate as before.
@@ -928,7 +957,8 @@ function installNodeDrag(node, el) {
     // A screen pixel is one canvas unit divided by the zoom factor.
     const dx = (event.clientX - originX) / view.zoom
     const dy = (event.clientY - originY) / view.zoom
-    for (const item of dragged) placeNode(item.node, item.startX + dx, item.startY + dy)
+    const offset = dragOffset(dragged[0], dx, dy)
+    for (const item of dragged) placeNode(item.node, item.startX + offset.dx, item.startY + offset.dy)
 
     // A card dragged past the layer's edge would have its edges clipped.
     resizeEdgeLayer(contentBounds(layout.nodes))
@@ -1273,6 +1303,7 @@ async function main() {
   fitToContent(contentBounds(layout.nodes))
   installViewportControls()
   installCardSizeControl()
+  installGridSnapControl()
 }
 
 main().catch(error => {
