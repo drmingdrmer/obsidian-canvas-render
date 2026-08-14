@@ -22,6 +22,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         '.canvas': 'application/json; charset=utf-8',
     }
 
+    def end_headers(self):
+        # Nothing is cached while developing. A page that mixes a fresh
+        # index.html with a cached canvas-render.js fails on whichever element
+        # one of them no longer knows about, and reads as a code bug.
+        self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
+
 port = int(sys.argv[1])
 print(f'http://localhost:{port}/')
 http.server.test(HandlerClass=Handler, port=port, bind='127.0.0.1')
