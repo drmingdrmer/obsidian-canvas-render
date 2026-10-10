@@ -80,4 +80,4 @@ The card size, the grid and the theme are all remembered across visits.
 
 ## Reading a note on its own
 
-A file card's title row carries two links: the title text opens the note rendered for reading (`?note=`), and the `</>` icon beside it opens the same file's markdown source (`?raw=`). A link card's title points at its URL.
+A note card's title row carries two links: the title text opens the note rendered for reading (`?note=`), and the `</>` icon beside it opens the same file's markdown source (`?raw=`). The title of any other file card, such as an image or a PDF, opens the file itself, and a link card's title points at its URL.

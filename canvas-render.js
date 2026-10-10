@@ -525,10 +525,11 @@ function createTitleLink(href, tooltip) {
 }
 
 /**
- * Two destinations per card: the title text reads the note, the icon beside it
- * shows the markdown source. Both go through this page's own views rather than
- * straight at the `.md`, so the text stays correct whatever media type the host
- * serves markdown as.
+ * Two destinations per note card: the title text reads the note, the icon
+ * beside it shows the markdown source. Both go through this page's own views
+ * rather than straight at the `.md`, so the text stays correct whatever media
+ * type the host serves markdown as. Those views read a file as text, so the
+ * title of any other file — an image, a PDF — opens the file itself.
  */
 function createTitleElement(node) {
   const titleEl = document.createElement('div')
@@ -537,9 +538,15 @@ function createTitleElement(node) {
   // Each anchor is inline-sized, so only its own text and icon are clickable —
   // not the empty remainder of the title row.
   const isLink = node.type === 'link'
-  const primaryHref = isLink ? node.url : noteHref(config.vaultRoot + node.file)
-  const primaryTooltip = isLink ? `Open ${node.url}` : `Read ${node.file}`
-  const primaryEl = createTitleLink(primaryHref, primaryTooltip)
+  const isNote = !isLink && fileExtension(node.file) === 'md'
+  let primaryEl = null
+  if (isLink) {
+    primaryEl = createTitleLink(node.url, `Open ${node.url}`)
+  } else if (isNote) {
+    primaryEl = createTitleLink(noteHref(config.vaultRoot + node.file), `Read ${node.file}`)
+  } else {
+    primaryEl = createTitleLink(vaultUrl(node.file), `Open ${node.file}`)
+  }
 
   const textEl = document.createElement('span')
   textEl.className = 'canvas-node-title-text'
@@ -547,7 +554,7 @@ function createTitleElement(node) {
   primaryEl.append(textEl, createIcon(EXTERNAL_LINK_ICON))
   titleEl.appendChild(primaryEl)
 
-  if (isLink) return titleEl
+  if (!isNote) return titleEl
 
   const sourceEl = createTitleLink(rawHref(config.vaultRoot + node.file), `View source of ${node.file}`)
   sourceEl.classList.add('canvas-node-source-link')

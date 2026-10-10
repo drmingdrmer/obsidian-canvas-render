@@ -74,3 +74,16 @@ test('a card color is a preset number or a hex value', async ({ page }) => {
     expect.soft(resolved, String(color)).toBeNull()
   }
 })
+
+test('an image or PDF card links its title to the file itself, with no source link', async ({ page }) => {
+  const image = { id: 'i', type: 'file', file: 'dir/a b.png', x: 0, y: 0, width: 300, height: 150 }
+  const pdf = { id: 'p', type: 'file', file: 'doc.pdf', x: 400, y: 0, width: 300, height: 150 }
+  await openBoard(page, { nodes: [image, pdf] })
+  const links = await page.locator('.canvas-node-title-link').evaluateAll(els => {
+    return els.map(el => ({ href: el.getAttribute('href'), title: el.title }))
+  })
+  expect(links).toEqual([
+    { href: 'board/dir/a%20b.png', title: 'Open dir/a b.png' },
+    { href: 'board/doc.pdf', title: 'Open doc.pdf' },
+  ])
+})
