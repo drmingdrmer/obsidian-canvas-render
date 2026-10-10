@@ -177,8 +177,11 @@ function wikilinkToHtml(body) {
   const pipeIndex = body.indexOf('|')
   const hasAlias = pipeIndex >= 0
   const target = hasAlias ? body.slice(0, pipeIndex) : body
-  const alias = hasAlias ? body.slice(pipeIndex + 1) : body.replace(/^.*?#/, '')
-  const label = alias.trim() === '' ? target.trim() : alias.trim()
+  const alias = hasAlias ? body.slice(pipeIndex + 1) : ''
+  // `Note#Heading` reads `Note > Heading`, as in Obsidian's reading view.
+  const sections = target.split('#').map(section => section.trim())
+  const targetLabel = sections.filter(section => section !== '').join(' > ')
+  const label = alias.trim() === '' ? targetLabel : alias.trim()
   return `<a class="internal-link is-unresolved" title="${escapeHtml(target.trim())}">${escapeHtml(label)}</a>`
 }
 
