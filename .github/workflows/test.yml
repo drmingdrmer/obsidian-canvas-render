@@ -1,0 +1,22 @@
+name: test
+
+on: push
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci
+      # The tests run headless, so the full Chromium is not needed.
+      - run: npx playwright install --with-deps --only-shell chromium
+      - run: npx playwright test
