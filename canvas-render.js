@@ -128,7 +128,6 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme
   const glyph = theme === 'dark' ? '☀' : '☾'
   for (const toggleEl of themeToggleEls) toggleEl.textContent = glyph
-  localStorage.setItem(THEME_STORAGE_KEY, theme)
 }
 
 /** Every view carries a toggle, so the wiring cannot live with the canvas controls. */
@@ -137,7 +136,10 @@ function installThemeToggles() {
   for (const toggleEl of themeToggleEls) {
     toggleEl.addEventListener('click', () => {
       const isDark = document.documentElement.dataset.theme === 'dark'
-      applyTheme(isDark ? 'light' : 'dark')
+      const theme = isDark ? 'light' : 'dark'
+      applyTheme(theme)
+      // Only a choice is stored: until the reader makes one, each load follows the OS.
+      localStorage.setItem(THEME_STORAGE_KEY, theme)
     })
   }
 }

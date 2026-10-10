@@ -30,3 +30,14 @@ test('the file view toggle flips the theme too', async ({ page }) => {
   await page.locator('.file-view-theme').click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
 })
+
+test('the theme follows the OS until a toggle is pressed', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  const stored = await page.evaluate(() => localStorage.getItem('canvas-render-theme'))
+  expect(stored).toBeNull()
+})

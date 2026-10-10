@@ -76,7 +76,7 @@ Every card keeps its stored position through all of this, so a card that grows c
 
 `Grid` lands a dragged card on the 20 px grid the background dots mark out, so cards line up with each other without being nudged into place. The card under the pointer is the one that aligns, and a group's frame carries its contents along at their own offsets. A resize grip aligns the corner it drags, which is the edge that has to meet the neighbours — a card's own origin may sit off the grid.
 
-The card size, the grid and the theme are all remembered across visits.
+The card size, the grid and the theme are all remembered across visits. Until the theme toggle is pressed, the theme follows the system's light or dark setting.
 
 ## Reading a note on its own
 
