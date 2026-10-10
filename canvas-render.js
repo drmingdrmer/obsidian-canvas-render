@@ -1422,7 +1422,8 @@ async function showFileView(path, mode) {
 
 async function main() {
   installThemeToggles()
-  marked.use({ gfm: true, breaks: false })
+  // A single newline is a line break, as in Obsidian with "Strict line breaks" off.
+  marked.use({ gfm: true, breaks: true })
 
   const params = new URLSearchParams(window.location.search)
 

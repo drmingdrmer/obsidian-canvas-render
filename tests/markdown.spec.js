@@ -102,6 +102,7 @@ const MARKDOWN = [
   ['[[Note|]]', '<p><a class="internal-link is-unresolved" title="Note">Note</a></p>\n'],
   ['[[Note#Heading]]', '<p><a class="internal-link is-unresolved" title="Note#Heading">Heading</a></p>\n'],
   ['[[a<b]]', '<p><a class="internal-link is-unresolved" title="a&lt;b">a&lt;b</a></p>\n'],
+  ['line1\nline2', '<p>line1<br>line2</p>\n'],
   ['~~gone~~', '<p><del>gone</del></p>\n'],
   ['- [ ] task\n- [x] done', '<ul>\n<li><input disabled="" type="checkbox"> task</li>\n<li><input checked="" disabled="" type="checkbox"> done</li>\n</ul>\n'],
 ]
