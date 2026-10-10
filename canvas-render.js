@@ -291,20 +291,18 @@ function sideAnchor(node, side) {
 }
 
 /** JSON Canvas allows omitting a side; pick the one facing the other node. */
-function inferSide(node, other, isSource) {
+function inferSide(node, other) {
   const dx = other.x + other.width / 2 - (node.x + node.width / 2)
   const dy = other.y + other.height / 2 - (node.y + node.height / 2)
   const isHorizontal = Math.abs(dx) >= Math.abs(dy)
 
   if (isHorizontal) {
     const towardsRight = dx >= 0
-    if (isSource) return towardsRight ? 'right' : 'left'
-    return towardsRight ? 'left' : 'right'
+    return towardsRight ? 'right' : 'left'
   }
 
   const towardsBottom = dy >= 0
-  if (isSource) return towardsBottom ? 'bottom' : 'top'
-  return towardsBottom ? 'top' : 'bottom'
+  return towardsBottom ? 'bottom' : 'top'
 }
 
 /**
@@ -687,8 +685,8 @@ function createEdgeElements(edge, fromNode, toNode) {
 /** Writes the geometry the endpoints' current positions imply into an existing edge. */
 function layoutEdge(record) {
   const { edge, fromNode, toNode } = record
-  const fromSide = edge.fromSide || inferSide(fromNode, toNode, true)
-  const toSide = edge.toSide || inferSide(toNode, fromNode, false)
+  const fromSide = edge.fromSide || inferSide(fromNode, toNode)
+  const toSide = edge.toSide || inferSide(toNode, fromNode)
   const geometry = edgeGeometry(fromNode, fromSide, toNode, toSide)
 
   const { start, startControl, endControl, end } = geometry
