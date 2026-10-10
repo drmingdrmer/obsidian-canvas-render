@@ -149,10 +149,11 @@ function installThemeToggles() {
 /**
  * One scan that recognises, in priority order: code (fenced or inline), display
  * math, inline math, wikilink. Code wins so that `$x$` inside backticks stays
- * literal, exactly as Obsidian treats it.
+ * literal, exactly as Obsidian treats it. Inline math must end in a non-space
+ * character, so that `between $5 and $10` stays text.
  */
 const INLINE_SCAN =
-  /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)|\$\$([\s\S]+?)\$\$|\$((?:[^$\\\n]|\\.)+?)\$|\[\[([^[\]]+?)\]\]/g
+  /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)|\$\$([\s\S]+?)\$\$|\$((?:[^$\\\n]|\\.)*?(?:[^\s$\\]|\\.))\$|\[\[([^[\]]+?)\]\]/g
 
 const MATH_PLACEHOLDER_PREFIX = 'CANVASMATH'
 const MATH_PLACEHOLDER_SUFFIX = 'ENDMATH'

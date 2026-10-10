@@ -89,6 +89,7 @@ const MARKDOWN = [
   ['~~~\n$y$\n~~~', '<pre><code>$y$\n</code></pre>\n'],
   ['$a_1 * b_2$', '<p>[M:a_1 * b_2]</p>\n'],
   ['costs \\$5 and \\$10', '<p>costs $5 and $10</p>\n'],
+  ['between $5 and $10', '<p>between $5 and $10</p>\n'],
   ['$bad{$', '<p>[ERR:bad{]</p>\n'],
   ['$$\nx\n$$\n---\ntext', '[D:\nx\n]\n<hr>\n<p>text</p>\n'],
   ['x\n$$\na\n$$\ny', '<p>x</p>\n[D:\na\n]\n<p>y</p>\n'],
