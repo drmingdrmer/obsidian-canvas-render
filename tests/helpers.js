@@ -40,4 +40,20 @@ function textCard(id, x, y, text) {
   return { id, type: 'text', x, y, width: 200, height: 100, text }
 }
 
-module.exports = { ORIGIN, serveApp, openBoard, textCard }
+// Presses at (x, y), moves by (dx, dy) and releases, in page pixels.
+async function dragBy(page, x, y, dx, dy) {
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + dx, y + dy)
+  await page.mouse.up()
+}
+
+// Each node's [x, y, width, height] in canvas units, keyed by node id.
+function boxes(page) {
+  return page.evaluate(() => {
+    const entries = layout.nodes.map(node => [node.id, [node.x, node.y, node.width, node.height]])
+    return Object.fromEntries(entries)
+  })
+}
+
+module.exports = { ORIGIN, serveApp, openBoard, textCard, dragBy, boxes }
