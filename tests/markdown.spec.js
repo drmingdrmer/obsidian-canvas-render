@@ -1,10 +1,79 @@
 const { test, expect } = require('@playwright/test')
 const { openBoard, textCard } = require('./helpers')
 
+// [text, splitTextNode(text)]
+const SPLITS = [
+  ['Title\nbody', { header: 'Title', body: 'body' }],
+  ['Title  \n\nbody', { header: 'Title', body: '\nbody' }],
+]
+
+// splitTextNode(text) returns { header: null, body: text } for these: a first
+// line that opens a block, a setext heading, a single line, a blank rest, or an
+// empty first line
+const NO_HEADER = [
+  '# H\nbody', '- a\n- b', '1. a\nb', '> q\nb', '```\nx\n```', '| a |\n|---|', '---\nx',
+  'Title\n===\nx', 'Title\n---\nx', 'Title', 'Title\n   \n', '\nbody', '',
+]
+
+const NOTE = '# A\na\n## B\nb\n### C\nc\n## D\nd\n# E\ne'
+
+// [subpath, sliceSubpath(NOTE, subpath)]
+const SLICES = [
+  ['#B', '## B\nb\n### C\nc'],
+  ['#C', '### C\nc'],
+  ['#A', '# A\na\n## B\nb\n### C\nc\n## D\nd'],
+  ['#E', '# E\ne'],
+  ['# B ', '## B\nb\n### C\nc'],
+  ['#Missing', NOTE],
+  ['#^block1', NOTE],
+  ['B', NOTE],
+  ['', NOTE],
+]
+
 test('splitTextNode lifts a prose first line into the header', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
-  const split = await page.evaluate(() => splitTextNode('Title\nbody'))
-  expect(split).toEqual({ header: 'Title', body: 'body' })
+  for (const [text, split] of SPLITS) {
+    const result = await page.evaluate(text => splitTextNode(text), text)
+    expect.soft(result, text).toEqual(split)
+  }
+})
+
+test('splitTextNode leaves a block opener, a setext heading and a lone line in the body', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  for (const text of NO_HEADER) {
+    const result = await page.evaluate(text => splitTextNode(text), text)
+    expect.soft(result, text).toEqual({ header: null, body: text })
+  }
+
+  const missing = await page.evaluate(() => splitTextNode(undefined))
+  expect(missing).toEqual({ header: null, body: '' })
+})
+
+test('sliceSubpath keeps the named heading and the deeper headings under it', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  for (const [subpath, slice] of SLICES) {
+    const args = [NOTE, subpath]
+    const result = await page.evaluate(([note, subpath]) => sliceSubpath(note, subpath), args)
+    expect.soft(result, subpath).toBe(slice)
+  }
+})
+
+test('a text card draws its first line as a header strip', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('h', 0, 0, 'Head\nbody'), textCard('s', 300, 0, 'single')] })
+  const cards = page.locator('.canvas-node')
+  await expect(cards.nth(0).locator('.canvas-node-header')).toHaveText('Head')
+  await expect(cards.nth(0).locator('.canvas-node-content')).toHaveText('body')
+  await expect(cards.nth(1).locator('.canvas-node-header')).toHaveCount(0)
+})
+
+test('a file card with a subpath shows only that section of its note', async ({ page }) => {
+  const card = { id: 'f', type: 'file', file: 'n.md', subpath: '#B', x: 0, y: 0, width: 300, height: 150 }
+  await openBoard(page, { nodes: [card] }, { 'n.md': '# A\na text\n## B\nb text\n# C\nc text' })
+  const content = page.locator('.canvas-node-content')
+  await expect(content.locator('h2')).toHaveText('B')
+  await expect(content).toContainText('b text')
+  await expect(content).not.toContainText('a text')
+  await expect(content).not.toContainText('c text')
 })
 
 test('a file card renders its note, math included', async ({ page }) => {
