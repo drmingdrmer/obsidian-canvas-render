@@ -206,3 +206,40 @@ test('a zoomed-out dot grid draws every second, fourth, … dot, never closer th
     await expect.soft(background, `zoom ${zoom}`).toHaveCSS('background-size', spacing)
   }
 })
+
+test('the dots sit on the points Grid snaps a card to', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 600, 600, 'A')] })
+  await page.evaluate(() => {
+    view.x = 107
+    view.y = 53
+    view.zoom = 1
+    applyView()
+  })
+
+  // Canvas (0, 0) is now at screen (107, 53), so the grid points inside a clip
+  // from (100, 40) to (140, 80) sit at clip x 7 and 27, y 13 and 33. A dot is
+  // 2 px across and covers the pixel on either side of each of those lines.
+  const shot = await page.screenshot({ clip: { x: 100, y: 40, width: 40, height: 40 } })
+  const dark = await page.evaluate(async data => {
+    const image = new Image()
+    image.src = `data:image/png;base64,${data}`
+    await image.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = image.width
+    canvas.height = image.height
+    const context = canvas.getContext('2d')
+    context.drawImage(image, 0, 0)
+    const pixels = context.getImageData(0, 0, image.width, image.height).data
+    const columns = new Set()
+    const rows = new Set()
+    for (let i = 0; i < pixels.length; i += 4) {
+      // The dots are #d4d5d8 on #fafafa, so a red value below 240 is a dot.
+      if (pixels[i] >= 240) continue
+      const pixel = i / 4
+      columns.add(pixel % image.width)
+      rows.add(Math.floor(pixel / image.width))
+    }
+    return { columns: [...columns].sort((a, b) => a - b), rows: [...rows].sort((a, b) => a - b) }
+  }, shot.toString('base64'))
+  expect(dark).toEqual({ columns: [6, 7, 26, 27], rows: [12, 13, 32, 33] })
+})

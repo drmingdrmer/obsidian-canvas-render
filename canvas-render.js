@@ -809,7 +809,11 @@ function applyView() {
   let spacing = GRID_SIZE * view.zoom
   while (spacing > 0 && spacing < MIN_DOT_SPACING) spacing *= 2
   backgroundEl.style.backgroundSize = `${spacing}px ${spacing}px`
-  backgroundEl.style.backgroundPosition = `${view.x % spacing}px ${view.y % spacing}px`
+  // A dot sits at the centre of its tile, so the tiles start half a tile before
+  // the points Grid snaps to.
+  const tileX = view.x % spacing - spacing / 2
+  const tileY = view.y % spacing - spacing / 2
+  backgroundEl.style.backgroundPosition = `${tileX}px ${tileY}px`
 
   const zoomLabel = `${Math.round(view.zoom * 100)}%`
   if (zoomLabel === shownZoomLabel) return
