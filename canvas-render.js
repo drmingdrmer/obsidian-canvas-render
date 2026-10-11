@@ -950,6 +950,12 @@ function installViewportControls() {
   zoomResetEl.addEventListener('click', () => zoomAroundCentre(1))
   // Recomputed at click time: a drag leaves the bounds captured at load stale.
   zoomFitEl.addEventListener('click', () => fitToContent(contentBounds(layout.nodes)))
+
+  // A resized window refits the board, unless the reader has moved the view since the fit.
+  const observer = new ResizeObserver(() => {
+    if (viewIsAsFitted()) fitToContent(contentBounds(layout.nodes))
+  })
+  observer.observe(wrapperEl)
 }
 
 // ------------------------------------------------------------------ dragging

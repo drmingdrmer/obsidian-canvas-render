@@ -52,6 +52,21 @@ test('Fit fits the board as a drag left it', async ({ page }) => {
   expect(fitted).toEqual({ x: 340, y: 210, zoom: 1 })
 })
 
+test('a window resize refits a view the reader has not moved, and leaves a moved one alone', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  await page.setViewportSize({ width: 640, height: 360 })
+  await expect.poll(() => page.evaluate(() => ({ ...view }))).toEqual({ x: 220, y: 130, zoom: 1 })
+
+  await page.mouse.move(100, 100)
+  await page.mouse.wheel(30, 40)
+  await expect.poll(() => page.evaluate(() => ({ ...view }))).toEqual({ x: 190, y: 90, zoom: 1 })
+  await page.setViewportSize({ width: 1280, height: 720 })
+  // Resize observers run after the frame's animation callbacks, so by the second frame they have run.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const moved = await page.evaluate(() => ({ ...view }))
+  expect(moved).toEqual({ x: 190, y: 90, zoom: 1 })
+})
+
 test('the zoom buttons zoom by 1.15 around the viewport centre', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
   const label = page.locator('#zoom-reset')
