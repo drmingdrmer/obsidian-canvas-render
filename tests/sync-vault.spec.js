@@ -50,10 +50,36 @@ test('sync-vault.sh copies each file a canvas names into the canvas directory', 
   expect(tree).toEqual({ 'pages/n.md': 'note', 'a b.png': 'image' })
 })
 
-// The vault holds ok.md and out/n.md, a symlink leaves it for secret/, and the
-// bundle's own out/ is a symlink to elsewhere/.
+test('sync-vault.sh also copies the images a note embeds, found beside the note', async ({}, testInfo) => {
+  const root = fs.realpathSync(testInfo.outputPath())
+  const note = [
+    '![a](../assets/figure.svg) ![b](<my figure.svg> "title") ![c](enc%20oded.svg) <img src="inline.svg">',
+    '![d](missing.png) ![e](https://example.com/e.png) ![f](/f.png)',
+  ].join('\n')
+  const images = {
+    'assets/figure.svg': 'figure',
+    'pages/my figure.svg': 'my figure',
+    'pages/enc oded.svg': 'encoded',
+    'pages/inline.svg': 'inline',
+  }
+  writeTree(root, { 'vault/pages/n.md': note })
+  for (const [image, content] of Object.entries(images)) writeTree(root, { [`vault/${image}`]: content })
+  const result = syncVault(root, ['pages/n.md'])
+
+  expect(result.stderr).toBe('skipped pages/missing.png, embedded in pages/n.md: not found in vault\n')
+  expect(result.stdout).toBe(`pages/n.md\n${Object.keys(images).join('\n')}\n`)
+  expect(result.status).toBe(0)
+  const tree = readTree(path.join(root, 'bundle'))
+  delete tree['board.canvas']
+  expect(tree).toEqual({ 'pages/n.md': note, ...images })
+})
+
+// The vault holds ok.md, out/n.md and escape.md, which embeds a file outside
+// it; a symlink leaves it for secret/, and the bundle's own out/ is a symlink
+// to elsewhere/.
 const LAYOUT = {
   'vault/ok.md': 'ok',
+  'vault/escape.md': '![](../outside.txt)',
   'vault/out/n.md': 'n',
   'vault/link': { link: '../secret' },
   'secret/secret.txt': 'secret',
@@ -69,6 +95,7 @@ const REFUSED = [
   ['out/n.md', root => `outside ${root}/bundle: out/n.md`],
   ['/etc/hosts', () => 'not a relative path: /etc/hosts'],
   ['missing.md', root => `not found in vault: ${root}/vault/missing.md`],
+  ['escape.md', root => `outside ${root}/vault: ../outside.txt`],
 ]
 
 test('sync-vault.sh refuses a path that leaves the vault or the bundle, and copies nothing', async ({}, testInfo) => {

@@ -121,7 +121,7 @@ const view = { x: 0, y: 0, zoom: 1 }
 let fittedView = null
 
 /** Read from the URL query at startup; the card size and the grid follow their controls. */
-const config = { vaultRoot: '', cardSize: 'actual', snapToGrid: false }
+const config = { canvasUrl: '', vaultRoot: '', cardSize: 'actual', snapToGrid: false }
 
 /**
  * The drawn canvas: node data, the element each node was drawn as, the edges on
@@ -434,10 +434,31 @@ function baseName(path) {
   return withExtension.replace(/\.md$/i, '')
 }
 
-function markdownElement(html) {
+/**
+ * A relative image or link in markdown names a file beside the document it is
+ * written in — the note, or the canvas for a text card — not beside this page.
+ * The sanitized fragment is not in the page yet, so no image has been
+ * requested from the wrong place.
+ */
+function resolveReferences(fragment, documentUrl) {
+  const baseUrl = new URL(documentUrl, window.location.href)
+  for (const el of fragment.querySelectorAll('img[src], a[href]')) {
+    const attribute = el.tagName === 'IMG' ? 'src' : 'href'
+    const reference = el.getAttribute(attribute)
+    if (reference.startsWith('#')) continue
+
+    const resolved = URL.parse(reference, baseUrl)
+    if (resolved === null) continue
+    el.setAttribute(attribute, resolved.href)
+  }
+}
+
+function markdownElement(html, documentUrl) {
   const el = document.createElement('div')
   el.className = 'markdown-preview'
-  el.append(DOMPurify.sanitize(html, SANITIZE_OPTIONS))
+  const fragment = DOMPurify.sanitize(html, SANITIZE_OPTIONS)
+  resolveReferences(fragment, documentUrl)
+  el.append(fragment)
   return el
 }
 
@@ -469,7 +490,7 @@ async function loadMarkdownInto(contentEl, node) {
 
   const source = await response.text()
   const section = sliceSubpath(source, node.subpath)
-  contentEl.replaceChildren(markdownElement(renderMarkdown(section)))
+  contentEl.replaceChildren(markdownElement(renderMarkdown(section), url))
 }
 
 function fillFileNode(contentEl, node) {
@@ -650,7 +671,7 @@ function splitTextNode(text) {
 function createTextHeaderElement(line) {
   const headerEl = document.createElement('div')
   headerEl.className = 'canvas-node-header'
-  headerEl.appendChild(markdownElement(renderMarkdown(line)))
+  headerEl.appendChild(markdownElement(renderMarkdown(line), config.canvasUrl))
   return headerEl
 }
 
@@ -691,7 +712,7 @@ function createNodeElement(node) {
   el.appendChild(contentEl)
 
   if (node.type === 'text') {
-    contentEl.replaceChildren(markdownElement(renderMarkdown(text.body)))
+    contentEl.replaceChildren(markdownElement(renderMarkdown(text.body), config.canvasUrl))
   } else if (node.type === 'file') {
     fillFileNode(contentEl, node)
   } else if (node.type === 'link') {
@@ -1455,12 +1476,13 @@ async function showFileView(path, mode) {
   fileViewToggleEl.textContent = isRaw ? 'Rendered' : 'Source'
   fileViewEl.hidden = false
 
-  const response = await fetchFile(encodePath(path))
+  const url = encodePath(path)
+  const response = await fetchFile(url)
   if (!response.ok) throw new Error(`Cannot read ${path} (HTTP ${response.status})`)
   const text = await response.text()
 
   if (!isRaw) {
-    fileViewBodyEl.replaceChildren(markdownElement(renderMarkdown(text)))
+    fileViewBodyEl.replaceChildren(markdownElement(renderMarkdown(text), url))
     return
   }
 
@@ -1486,11 +1508,12 @@ async function main() {
 
   const canvasPath = params.get('canvas') || DEFAULT_CANVAS_PATH
   assertAllowedHost(canvasPath, 'canvas')
+  config.canvasUrl = encodePath(canvasPath)
   config.vaultRoot = resolveVaultRoot(params, canvasPath)
   config.cardSize = preferredCardSize(params)
 
   showStatus(`Loading ${canvasPath} …`)
-  const response = await fetchFile(encodePath(canvasPath))
+  const response = await fetchFile(config.canvasUrl)
   if (!response.ok) throw new Error(`Cannot read ${canvasPath} (HTTP ${response.status})`)
 
   const data = await response.json().catch(cause => {

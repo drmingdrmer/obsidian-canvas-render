@@ -8,11 +8,13 @@ The page fetches its content at runtime, so it has to be served over HTTP:
 ./serve.sh          # port 8000 by default; pass another as the first argument
 ```
 
-Point it at a canvas with `?canvas=my-board/index.canvas`. That canvas file and the notes it references must sit under the served directory, keeping the paths the canvas stores. `sync-vault.sh` copies them out of an Obsidian vault for you. It copies nothing if one of them is missing there, or if a path leads outside the vault or the canvas directory:
+Point it at a canvas with `?canvas=my-board/index.canvas`. That canvas file and the notes it references must sit under the served directory, keeping the paths the canvas stores. `sync-vault.sh` copies them out of an Obsidian vault for you, along with the images those notes embed. It copies nothing if one of them is missing there, or if a path leads outside the vault or the canvas directory. An embedded image it cannot find is left out, with a warning:
 
 ```bash
 ./sync-vault.sh ~/Documents/my-vault my-board/index.canvas
 ```
+
+An image or a link in a note is found relative to the note's own directory, as Obsidian's "Relative path to file" link format writes it. Obsidian also finds an image by its file name alone, wherever it sits in the vault; the page finds such an image only when it sits beside the note.
 
 Everything outside `vault/` is the application; `vault/` is one content bundle, and serving a second canvas means adding a second directory of the same shape.
 

@@ -147,7 +147,7 @@ test('markdownElement keeps KaTeX output whole', async ({ page }) => {
       const html = renderMarkdown(source)
       const unsanitized = document.createElement('div')
       unsanitized.innerHTML = html
-      return { sanitized: markdownElement(html).innerHTML, unsanitized: unsanitized.innerHTML }
+      return { sanitized: markdownElement(html, 'n.md').innerHTML, unsanitized: unsanitized.innerHTML }
     }, source)
     expect.soft(result.sanitized, source).toBe(result.unsanitized)
   }

@@ -1,5 +1,18 @@
 const { test, expect } = require('@playwright/test')
-const { openBoard, textCard } = require('./helpers')
+const { ORIGIN, openBoard, textCard } = require('./helpers')
+
+// 40 × 30 once decoded.
+const FIGURE = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="40" height="30"/></svg>'
+
+// Runs in the page: the src and decoded size of each image, and the href of
+// each link, in rendered markdown.
+function readReferences(el) {
+  const images = [...el.querySelectorAll('img')].map(image => {
+    return { src: image.getAttribute('src'), width: image.naturalWidth, height: image.naturalHeight }
+  })
+  const links = [...el.querySelectorAll('a')].map(link => link.getAttribute('href'))
+  return { images, links }
+}
 
 test('a markdown file card links its title to the note view and its icon to the source view', async ({ page }) => {
   const card = { id: 'n', type: 'file', file: 'n.md', x: 0, y: 0, width: 300, height: 150 }
@@ -112,4 +125,28 @@ test('a file extension is read from the file name, not from a folder name', asyn
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
   const extensions = await page.evaluate(() => ['dir.v1/file', 'dir.v1/Note.MD', 'file'].map(fileExtension))
   expect(extensions).toEqual(['', 'md', ''])
+})
+
+test('markdown finds its images and links beside the note or canvas it is written in', async ({ page }) => {
+  const note = '![figure](../assets/figure.svg)\n[next](next.md) [top](#top) [web](https://example.com/)'
+  const figure = route => route.fulfill({ body: FIGURE, contentType: 'image/svg+xml' })
+  const card = { id: 'n', type: 'file', file: 'pages/n.md', x: 0, y: 0, width: 300, height: 200 }
+  const text = textCard('t', 400, 0, '![figure](assets/figure.svg)')
+  await openBoard(page, { nodes: [card, text] }, { 'pages/n.md': note, 'assets/figure.svg': figure })
+
+  const figureUrl = `${ORIGIN}board/assets/figure.svg`
+  const decoded = { src: figureUrl, width: 40, height: 30 }
+  const noteReferences = { images: [decoded], links: [`${ORIGIN}board/pages/next.md`, '#top', 'https://example.com/'] }
+  const cards = page.locator('.canvas-node')
+  const notePreview = cards.nth(0).locator('.markdown-preview')
+  const textPreview = cards.nth(1).locator('.markdown-preview')
+  await expect(notePreview.locator('img')).toHaveJSProperty('complete', true)
+  await expect(textPreview.locator('img')).toHaveJSProperty('complete', true)
+  expect(await notePreview.evaluate(readReferences)).toEqual(noteReferences)
+  expect(await textPreview.evaluate(readReferences)).toEqual({ images: [decoded], links: [] })
+
+  await page.goto(`${ORIGIN}?note=board/pages/n.md`)
+  const filePreview = page.locator('#file-view-body .markdown-preview')
+  await expect(filePreview.locator('img')).toHaveJSProperty('complete', true)
+  expect(await filePreview.evaluate(readReferences)).toEqual(noteReferences)
 })
