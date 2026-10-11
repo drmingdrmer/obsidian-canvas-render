@@ -1,8 +1,21 @@
 const fs = require('node:fs')
+const net = require('node:net')
 const path = require('node:path')
+const { spawn } = require('node:child_process')
 const { test, expect, ORIGIN, serveApp, openBoard } = require('./helpers')
 
-test('the demo board draws every card and edge, and loads every note', async ({ page }) => {
+const SERVE_SCRIPT = path.join(__dirname, '..', 'serve.sh')
+
+// Asks the OS for a port that nothing listens on.
+async function freePort() {
+  const probe = net.createServer()
+  await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve))
+  const port = probe.address().port
+  await new Promise(resolve => probe.close(resolve))
+  return port
+}
+
+test('the demo board, served by serve.sh, draws every card and edge, and loads every note', async ({ page }) => {
   const errors = []
   page.on('console', message => {
     if (message.type() === 'error') errors.push(message.text())
@@ -12,13 +25,23 @@ test('the demo board draws every card and edge, and loads every note', async ({ 
   const demoPath = path.join(__dirname, '..', 'vault', 'demo.canvas')
   const demo = JSON.parse(fs.readFileSync(demoPath, 'utf8'))
 
-  await serveApp(page)
-  await page.goto(ORIGIN)
-  await expect(page.locator('.canvas-node')).toHaveCount(demo.nodes.length)
-  await expect(page.locator('.canvas-edge-line')).toHaveCount(demo.edges.length)
-  // Each file card holds a placeholder until its note renders.
-  await expect(page.locator('.canvas-node-placeholder')).toHaveCount(0)
-  expect(errors).toEqual([])
+  const port = await freePort()
+  // serve.sh runs python3 as its child. detached gives the two a process group
+  // of their own, so one kill stops both.
+  const server = spawn('bash', [SERVE_SCRIPT, String(port)], { detached: true, stdio: 'ignore' })
+  try {
+    const url = `http://127.0.0.1:${port}/`
+    const status = () => fetch(url).then(response => response.status, error => error.cause?.code)
+    await expect.poll(status).toBe(200)
+    await page.goto(url)
+    await expect(page.locator('.canvas-node')).toHaveCount(demo.nodes.length)
+    await expect(page.locator('.canvas-edge-line')).toHaveCount(demo.edges.length)
+    // Each file card holds a placeholder until its note renders.
+    await expect(page.locator('.canvas-node-placeholder')).toHaveCount(0)
+    expect(errors).toEqual([])
+  } finally {
+    process.kill(-server.pid)
+  }
 })
 
 test('a canvas on raw.githubusercontent.com reads its notes from beside it', async ({ page }) => {
