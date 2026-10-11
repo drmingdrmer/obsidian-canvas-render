@@ -43,6 +43,15 @@ const REMOTE_HOSTS = ['raw.githubusercontent.com']
  */
 const SANITIZE_OPTIONS = { ADD_TAGS: ['semantics', 'annotation'], RETURN_DOM_FRAGMENT: true }
 
+/**
+ * A link card frames a page from any host. The page runs as it would in a tab
+ * of its own, but cannot navigate this page or open dialogs over it. A page on
+ * this page's own origin could lift the sandbox, but such a page comes from
+ * this site. File cards get no sandbox: Chrome refuses to show a PDF in a
+ * sandboxed frame.
+ */
+const LINK_FRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
+
 const GRID_SIZE = 20
 const MIN_CARD_WIDTH = 120
 const MIN_CARD_HEIGHT = 60
@@ -491,10 +500,30 @@ function fillFileNode(contentEl, node) {
   })
 }
 
+/**
+ * The URL a link card frames and links to, or null for anything but a web
+ * page: the frame and the title would run a `javascript:` URL in this page.
+ */
+function webUrl(url) {
+  const parsed = URL.parse(url, window.location.href)
+  if (parsed === null) return null
+
+  const isWebPage = parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  if (!isWebPage) return null
+  return parsed.href
+}
+
 function fillLinkNode(contentEl, node) {
+  const url = webUrl(node.url)
+  if (url === null) {
+    contentEl.replaceChildren(placeholderElement(`A link card shows an http or https URL, not ${node.url}`))
+    return
+  }
+
   const frame = document.createElement('iframe')
   frame.className = 'canvas-node-embed'
-  frame.src = node.url
+  frame.sandbox = LINK_FRAME_SANDBOX
+  frame.src = url
   frame.loading = 'lazy'
   frame.referrerPolicy = 'no-referrer'
   contentEl.dataset.fill = 'true'
@@ -551,22 +580,30 @@ function createTitleElement(node) {
   const titleEl = document.createElement('div')
   titleEl.className = 'canvas-node-title'
 
+  const textEl = document.createElement('span')
+  textEl.className = 'canvas-node-title-text'
+  textEl.textContent = nodeTitleText(node)
+
+  // A link card names a URL it refuses, with nothing to follow.
+  const isLink = node.type === 'link'
+  const linkUrl = isLink ? webUrl(node.url) : null
+  if (isLink && linkUrl === null) {
+    titleEl.appendChild(textEl)
+    return titleEl
+  }
+
   // Each anchor is inline-sized, so only its own text and icon are clickable —
   // not the empty remainder of the title row.
-  const isLink = node.type === 'link'
   const isNote = !isLink && fileExtension(node.file) === 'md'
   let primaryEl = null
   if (isLink) {
-    primaryEl = createTitleLink(node.url, `Open ${node.url}`)
+    primaryEl = createTitleLink(linkUrl, `Open ${node.url}`)
   } else if (isNote) {
     primaryEl = createTitleLink(noteHref(config.vaultRoot + node.file), `Read ${node.file}`)
   } else {
     primaryEl = createTitleLink(vaultUrl(node.file), `Open ${node.file}`)
   }
 
-  const textEl = document.createElement('span')
-  textEl.className = 'canvas-node-title-text'
-  textEl.textContent = nodeTitleText(node)
   primaryEl.append(textEl, createIcon(EXTERNAL_LINK_ICON))
   titleEl.appendChild(primaryEl)
 

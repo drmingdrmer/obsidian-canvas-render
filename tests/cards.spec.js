@@ -43,6 +43,26 @@ test('a link card frames the page and links its title to it', async ({ page }) =
   await expect(frame).toHaveAttribute('src', url)
   await expect(frame).toHaveAttribute('loading', 'lazy')
   await expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer')
+  await expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox')
+})
+
+test('a link card frames and links an http or https URL only', async ({ page }) => {
+  const urls = [
+    'javascript:parent.scriptRan = true; void 0',
+    ' JavaScript:parent.scriptRan = true; void 0',
+    'data:text/html,<script>parent.scriptRan = true</script>',
+  ]
+  const nodes = urls.map((url, i) => ({ id: `l${i}`, type: 'link', url, x: i * 400, y: 0, width: 300, height: 200 }))
+  await openBoard(page, { nodes })
+
+  await expect(page.locator('.canvas-node-embed')).toHaveCount(0)
+  await expect(page.locator('.canvas-node-title-link')).toHaveCount(0)
+  const titles = await page.locator('.canvas-node-title-text').allTextContents()
+  expect(titles).toEqual(urls)
+  const placeholders = await page.locator('.canvas-node-placeholder').allTextContents()
+  expect(placeholders).toEqual(urls.map(url => `A link card shows an http or https URL, not ${url}`))
+  const scriptRan = await page.evaluate(() => window.scriptRan)
+  expect(scriptRan).toBeUndefined()
 })
 
 test('a group shows its label, holds no content, and is drawn behind the cards', async ({ page }) => {
