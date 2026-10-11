@@ -2,7 +2,7 @@ const fs = require('node:fs')
 const net = require('node:net')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
-const { test, expect, ORIGIN, serveApp, openBoard } = require('./helpers')
+const { test, expect, ORIGIN, serveApp, openBoard, textCard } = require('./helpers')
 
 const SERVE_SCRIPT = path.join(__dirname, '..', 'serve.sh')
 
@@ -91,6 +91,33 @@ test('a canvas that cannot be drawn shows why in the status line', async ({ page
   // The parser's own message follows, and its wording differs between browsers.
   await page.goto(`${ORIGIN}?canvas=board/bad.canvas`)
   await expect(status).toHaveText(/^Cannot parse board\/bad\.canvas: \S/)
+})
+
+// [a canvas that drawCanvas refuses, the message it shows]
+const BROKEN_CANVASES = [
+  [{ edges: {} }, 'canvas file has an "edges" field that is not an array'],
+  [{ nodes: [null] }, 'node 0 is not a JSON object'],
+  [{ nodes: [{ ...textCard('a', 0, 0, 'A'), id: 7 }] }, 'node 0 needs a string in "id"'],
+  [{ nodes: [textCard('a', 0, 0, 'A'), textCard('a', 300, 0, 'B')] }, 'two nodes have the id "a"'],
+  [{ nodes: [{ ...textCard('a', 0, 0, 'A'), type: undefined }] }, 'node "a" needs a string in "type"'],
+  [{ nodes: [{ ...textCard('a', 0, 0, 'A'), x: '0' }] }, 'node "a" needs a number in "x"'],
+  [{ nodes: [{ ...textCard('a', 0, 0, 'A'), height: null }] }, 'node "a" needs a number in "height"'],
+  [{ nodes: [{ ...textCard('a', 0, 0, 'A'), text: undefined }] }, 'node "a" needs a string in "text"'],
+  [{ nodes: [{ id: 'f', type: 'file', x: 0, y: 0, width: 300, height: 100 }] }, 'node "f" needs a string in "file"'],
+  [{ nodes: [{ id: 'l', type: 'link', x: 0, y: 0, width: 300, height: 100 }] }, 'node "l" needs a string in "url"'],
+  [{ nodes: [textCard('a', 0, 0, 'A')], edges: [null] }, 'edge 0 is not a JSON object'],
+]
+
+test('a canvas with a broken node or edge names it and the field, and draws nothing', async ({ page }) => {
+  let canvas = null
+  await serveApp(page)
+  await page.route('**/board/broken.canvas', route => route.fulfill({ json: canvas }))
+  for (const [broken, message] of BROKEN_CANVASES) {
+    canvas = broken
+    await page.goto(`${ORIGIN}?canvas=board/broken.canvas`)
+    await expect.soft(page.locator('#status'), message).toHaveText(message)
+    await expect.soft(page.locator('.canvas-node'), message).toHaveCount(0)
+  }
 })
 
 test('a canvas without nodes draws an empty board', async ({ page }) => {

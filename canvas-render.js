@@ -1414,15 +1414,49 @@ function indexEdge(record) {
   }
 }
 
+function isJsonObject(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** The string field each node type draws from, as JSON Canvas names it. */
+const CONTENT_FIELDS = new Map([['text', 'text'], ['file', 'file'], ['link', 'url']])
+
+/** Throws when a node lacks a field that drawing reads, naming the node and the field. */
+function validateNode(node, index) {
+  if (!isJsonObject(node)) throw new TypeError(`node ${index} is not a JSON object`)
+  if (typeof node.id !== 'string') throw new TypeError(`node ${index} needs a string in "id"`)
+
+  const name = `node "${node.id}"`
+  if (typeof node.type !== 'string') throw new TypeError(`${name} needs a string in "type"`)
+  for (const field of ['x', 'y', 'width', 'height']) {
+    if (!Number.isFinite(node[field])) throw new TypeError(`${name} needs a number in "${field}"`)
+  }
+
+  const contentField = CONTENT_FIELDS.get(node.type)
+  if (contentField === undefined) return
+  if (typeof node[contentField] !== 'string') throw new TypeError(`${name} needs a string in "${contentField}"`)
+}
+
 function drawCanvas(data) {
-  const isObject = typeof data === 'object' && data !== null && !Array.isArray(data)
-  if (!isObject) throw new TypeError('canvas file is not a JSON object')
+  if (!isJsonObject(data)) throw new TypeError('canvas file is not a JSON object')
 
   // JSON Canvas makes both arrays optional, so `{}` is an empty board.
   const nodes = data.nodes ?? []
   if (!Array.isArray(nodes)) throw new TypeError('canvas file has a "nodes" field that is not an array')
-  const edges = Array.isArray(data.edges) ? data.edges : []
-  const nodesById = new Map(nodes.map(node => [node.id, node]))
+  const edges = data.edges ?? []
+  if (!Array.isArray(edges)) throw new TypeError('canvas file has an "edges" field that is not an array')
+
+  // Every check runs before anything is drawn, so a broken file draws nothing.
+  const nodesById = new Map()
+  for (const [index, node] of nodes.entries()) {
+    validateNode(node, index)
+    if (nodesById.has(node.id)) throw new TypeError(`two nodes have the id "${node.id}"`)
+    nodesById.set(node.id, node)
+  }
+  for (const [index, edge] of edges.entries()) {
+    if (!isJsonObject(edge)) throw new TypeError(`edge ${index} is not a JSON object`)
+  }
+
   layout.nodes = nodes
   for (const node of nodes) {
     layout.authoredSizes.set(node.id, { width: node.width, height: node.height })
