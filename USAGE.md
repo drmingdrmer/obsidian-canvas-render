@@ -71,7 +71,9 @@ Nothing is written back to the file: a reload restores the board the `.canvas` d
 
 ## Controls
 
-The bar in the corner holds three groups: the zoom, the size of every card, and the theme.
+The bar in the corner holds the search box, the zoom, the size of every card, the grid and the theme.
+
+The search box lists the cards whose name or text holds what is typed, ignoring case: a note card's file name and its note, a text card's text, a link card's URL and a group's label. Cards whose name holds it come first. Picking one, or pressing Enter for the first, fits the view to that card, at 100% at most, and puts the focus on it. Escape clears the box. The view stays on that card while the window or the card changes size, until the board is moved by hand.
 
 `Actual`, `Wide` and `Compact` set the size of every card at once. `Actual` gives each card the size its file stores, `Wide` draws them all 520 px across and `Compact` 320 px. At both fixed widths the content sets the height, capped at 480 px and 240 px, so a long note scrolls inside its card rather than towering over the board. A card holding an image is as tall as the image needs, and one holding an iframe takes the cap, an iframe having no height of its own. Group frames keep the size the file gives them, since a frame marks out a region of the board.
 

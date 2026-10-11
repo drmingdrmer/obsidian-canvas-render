@@ -45,6 +45,13 @@
   </div>
 
   <div class="canvas-controls">
+    <div class="canvas-control-group canvas-search">
+      <input class="canvas-search-input" id="search" type="search" placeholder="Search cards"
+        title="Find a card by its name or text" aria-label="Search cards" autocomplete="off" spellcheck="false">
+      <div class="canvas-search-results" id="search-results" hidden></div>
+    </div>
+
+    <span class="canvas-control-divider"></span>
     <span class="canvas-control-group">
       <button class="canvas-control-item" id="zoom-out" title="Zoom out">&minus;</button>
       <button class="canvas-control-item" id="zoom-reset" title="Reset to 100%">100%</button>

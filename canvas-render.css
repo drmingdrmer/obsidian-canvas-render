@@ -536,14 +536,85 @@ body {
   font-weight: 600;
 }
 
-/* The bar carries three unrelated controls: the view's zoom, the size of every
-   card, and the theme. A rule marks where one ends and the next begins. */
+/* The bar carries unrelated controls: the search, the view's zoom, the size of
+   every card, the grid and the theme. A rule marks where one ends and the next
+   begins. */
 .canvas-control-divider {
   width: 1px;
   margin: 6px 4px;
   /* The border colour is a hairline meant for edges, and reads as nothing in
      the middle of a lit bar; the muted text grey is what the eye picks up. */
   background: var(--text-faint);
+}
+
+/* ---------- search ---------- */
+
+/* The list of matching cards opens above the box, since the bar sits at the
+   bottom of the window. */
+.canvas-search {
+  position: relative;
+}
+
+.canvas-search-input {
+  width: 150px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.canvas-search-input:focus {
+  border-color: var(--text-accent);
+  outline: none;
+}
+
+.canvas-search-results {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 0;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: min(360px, calc(100vh - 160px));
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  box-shadow: var(--canvas-shadow);
+  overscroll-behavior: contain;
+}
+
+.canvas-search-result {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.canvas-search-result:hover,
+.canvas-search-result:focus-visible {
+  background: var(--background-modifier-hover);
+  outline: none;
+}
+
+.canvas-search-empty {
+  padding: 6px 8px;
+  color: var(--text-faint);
+  font-size: 13px;
 }
 
 /* ---------- single-file view: rendered note, or its markdown source ---------- */

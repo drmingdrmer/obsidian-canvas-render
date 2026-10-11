@@ -108,6 +108,8 @@ const zoomResetEl = document.getElementById('zoom-reset')
 const zoomFitEl = document.getElementById('zoom-fit')
 const cardSizeEls = document.querySelectorAll('[data-card-size]')
 const gridSnapEl = document.getElementById('grid-snap')
+const searchEl = document.getElementById('search')
+const searchResultsEl = document.getElementById('search-results')
 const themeToggleEls = document.querySelectorAll('.theme-toggle')
 const fileViewEl = document.getElementById('file-view')
 const fileViewPathEl = document.getElementById('file-view-path')
@@ -119,7 +121,10 @@ const fileViewBodyEl = document.getElementById('file-view-body')
 /** Screen position of canvas origin, plus the current scale factor. */
 const view = { x: 0, y: 0, zoom: 1 }
 
-/** The view as `fitToContent` last left it; a pan or a zoom by the reader makes it stale. */
+/**
+ * The view as `fitToContent` last left it, and the node it fitted, null for the
+ * whole board; a pan or a zoom by the reader makes it stale.
+ */
 let fittedView = null
 
 /** The zoom controls stop at 10%, or lower when the last fit needed less to show the whole board. */
@@ -919,7 +924,11 @@ function zoomAroundCentre(nextZoom) {
   zoomAt(rect.width / 2, rect.height / 2, nextZoom)
 }
 
-function fitToContent(bounds) {
+/**
+ * Fits the bounds into the viewport, at zoom 1 at most, and remembers what was
+ * fitted: the whole board, or the one node passed in.
+ */
+function fitToContent(bounds, node = null) {
   const rect = wrapperEl.getBoundingClientRect()
   const contentWidth = bounds.maxX - bounds.minX
   const contentHeight = bounds.maxY - bounds.minY
@@ -932,11 +941,12 @@ function fitToContent(bounds) {
   const scale = Math.min(scaleX, scaleY, FIT_MAX_ZOOM)
 
   view.zoom = scale
-  zoomFloor = Math.min(MIN_ZOOM, scale)
+  // A card fitted on its own leaves the floor where the board's fit put it.
+  if (node === null) zoomFloor = Math.min(MIN_ZOOM, scale)
   view.x = rect.width / 2 - (bounds.minX + contentWidth / 2) * view.zoom
   view.y = rect.height / 2 - (bounds.minY + contentHeight / 2) * view.zoom
   applyView()
-  fittedView = { x: view.x, y: view.y, zoom: view.zoom }
+  fittedView = { x: view.x, y: view.y, zoom: view.zoom, node: node }
 }
 
 /** True while the view is still the one that was fitted, untouched since. */
@@ -947,7 +957,20 @@ function viewIsAsFitted() {
   return samePan && view.zoom === fittedView.zoom
 }
 
-/** The card a press put the focus on, or null while the focus is on the board. */
+/**
+ * Fits the view again to what it was last fitted to, the board or one card,
+ * once the window or a card has changed size — unless the reader has moved
+ * the view since.
+ */
+function refitView() {
+  if (!viewIsAsFitted()) return
+
+  const node = fittedView.node
+  const nodes = node === null ? layout.nodes : [node]
+  fitToContent(contentBounds(nodes), node)
+}
+
+/** The card a press or a search put the focus on, or null while the focus is on the board. */
 let focusedCardEl = null
 
 /**
@@ -962,12 +985,22 @@ function focusOnPress(target) {
   if (!(target instanceof Element)) return
   if (target.closest('.canvas-controls') !== null) return
 
-  const cardEl = target.closest('.canvas-node')
+  focusCard(target.closest('.canvas-node'))
+}
+
+/** Puts the focus on a card, or on the board for null, and marks the card that holds it. */
+function focusCard(cardEl) {
   if (cardEl === focusedCardEl) return
 
   if (focusedCardEl !== null) delete focusedCardEl.dataset.focused
   focusedCardEl = cardEl
   if (cardEl !== null) cardEl.dataset.focused = 'true'
+}
+
+/** Fits the view to one card, and puts the focus on it as a press on it would. */
+function showCard(node) {
+  fitToContent(contentBounds([node]), node)
+  focusCard(layout.elements.get(node.id))
 }
 
 /** A wheel scrolls a card's content only over the card the focus is on. */
@@ -1058,10 +1091,8 @@ function installViewportControls() {
   // Recomputed at click time: a drag leaves the bounds captured at load stale.
   zoomFitEl.addEventListener('click', () => fitToContent(contentBounds(layout.nodes)))
 
-  // A resized window refits the board, unless the reader has moved the view since the fit.
-  const observer = new ResizeObserver(() => {
-    if (viewIsAsFitted()) fitToContent(contentBounds(layout.nodes))
-  })
+  // A resized window refits the view, unless the reader has moved it since the fit.
+  const observer = new ResizeObserver(refitView)
   observer.observe(wrapperEl)
 }
 
@@ -1415,8 +1446,8 @@ const cardSizeObserver = new ResizeObserver(entries => {
   }
   if (resized.length === 0) return
 
-  const bounds = relayoutAfterResize(resized)
-  if (viewIsAsFitted()) fitToContent(bounds)
+  relayoutAfterResize(resized)
+  refitView()
 })
 
 function observeCardSize(el, node) {
@@ -1468,6 +1499,110 @@ function installCardSizeControl() {
     // Pressing the size already in force puts cards resized by hand back under it.
     el.addEventListener('click', () => applyCardSize(el.dataset.cardSize))
   }
+}
+
+// -------------------------------------------------------------------- search
+
+/** What a search result calls a card: the name or label it shows, or its first line. */
+function cardName(node) {
+  if (node.type === 'file' || node.type === 'link') return nodeTitleText(node)
+  if (node.type === 'group') return node.label ?? ''
+  if (node.type === 'text') return node.text.trim().split('\n')[0]
+  return ''
+}
+
+/** The markdown a card shows, as text: a note once it has loaded, or a text card's header and body. */
+function renderedText(node) {
+  const previewEls = layout.elements.get(node.id).querySelectorAll('.markdown-preview')
+  const texts = [...previewEls].map(previewEl => previewEl.textContent)
+  return texts.join('\n')
+}
+
+/**
+ * The cards whose name or rendered text holds the query, ignoring case. A card
+ * whose name holds it comes first, since that is usually the card meant.
+ */
+function searchCards(query) {
+  const needle = query.toLowerCase()
+  const named = []
+  const mentioned = []
+  for (const node of layout.nodes) {
+    const name = cardName(node).toLowerCase()
+    if (name.includes(needle)) {
+      named.push(node)
+      continue
+    }
+
+    const text = renderedText(node).toLowerCase()
+    if (text.includes(needle)) mentioned.push(node)
+  }
+  return named.concat(mentioned)
+}
+
+function pickSearchResult(node) {
+  searchResultsEl.hidden = true
+  showCard(node)
+}
+
+function searchResultElement(node) {
+  const resultEl = document.createElement('button')
+  resultEl.className = 'canvas-search-result'
+  resultEl.textContent = cardName(node)
+  resultEl.addEventListener('click', () => pickSearchResult(node))
+  return resultEl
+}
+
+/** Lists the cards that match the search box, or hides the list while the box is empty. */
+function showSearchResults() {
+  const query = searchEl.value.trim()
+  if (query === '') {
+    searchResultsEl.hidden = true
+    return
+  }
+
+  const resultEls = searchCards(query).map(searchResultElement)
+  if (resultEls.length === 0) {
+    const emptyEl = document.createElement('div')
+    emptyEl.className = 'canvas-search-empty'
+    emptyEl.textContent = 'No card matches'
+    resultEls.push(emptyEl)
+  }
+  searchResultsEl.replaceChildren(...resultEls)
+  searchResultsEl.hidden = false
+}
+
+/**
+ * Typing lists the matching cards above the box; picking one, or pressing
+ * Enter for the first, fits the view to it. A press anywhere else closes the
+ * list and keeps the query, so a click in the box brings the list back.
+ */
+function installSearch() {
+  searchEl.addEventListener('input', showSearchResults)
+  searchEl.addEventListener('click', showSearchResults)
+  searchEl.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      searchEl.value = ''
+      searchResultsEl.hidden = true
+      return
+    }
+    if (event.key !== 'Enter') return
+
+    const firstResultEl = searchResultsEl.querySelector('.canvas-search-result')
+    if (firstResultEl !== null) firstResultEl.click()
+  })
+
+  // In the capture phase, as a press on a card's title row goes no further.
+  wrapperEl.addEventListener(
+    'pointerdown',
+    event => {
+      if (!(event.target instanceof Element)) return
+      if (event.target.closest('.canvas-search') !== null) return
+      searchResultsEl.hidden = true
+    },
+    true,
+  )
+  // The wheel scrolls a long list, rather than moving the board under it.
+  searchResultsEl.addEventListener('wheel', event => event.stopPropagation())
 }
 
 // ------------------------------------------------------------------- drawing
@@ -1715,6 +1850,7 @@ async function main() {
   fitToContent(contentBounds(layout.nodes))
   installViewportControls()
   installCardSizeControl()
+  installSearch()
   installGridSnapControl()
 }
 
