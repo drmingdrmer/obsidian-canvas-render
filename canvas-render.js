@@ -1561,5 +1561,5 @@ async function main() {
 
 main().catch(error => {
   showStatus(String(error.message || error))
-  throw error
+  console.error(error)
 })

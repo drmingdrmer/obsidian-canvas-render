@@ -72,14 +72,7 @@ test('the vault parameter sets where file cards read their notes', async ({ page
 })
 
 test('a canvas that cannot be drawn shows why in the status line', async ({ page, expectedErrors }) => {
-  // main() shows each failure in the status line, and throws it too.
-  expectedErrors.push(
-    `HTTP 404 ${ORIGIN}board/none.canvas`,
-    'Cannot read board/none.canvas (HTTP 404)',
-    'canvas file is not a JSON object',
-    'canvas file has a "nodes" field that is not an array',
-    /^Cannot parse board\/bad\.canvas: /,
-  )
+  expectedErrors.push(`HTTP 404 ${ORIGIN}board/none.canvas`)
   await serveApp(page)
   await page.route('**/board/list.canvas', route => route.fulfill({ json: [] }))
   await page.route('**/board/node-map.canvas', route => route.fulfill({ json: { nodes: {} } }))

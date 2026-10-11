@@ -43,7 +43,7 @@ test('?raw= shows the source exactly, with a link back to the rendered note', as
 })
 
 test('a note that cannot be read shows why', async ({ page, expectedErrors }) => {
-  expectedErrors.push(`HTTP 404 ${ORIGIN}board/none.md`, 'Cannot read board/none.md (HTTP 404)')
+  expectedErrors.push(`HTTP 404 ${ORIGIN}board/none.md`)
   await serveApp(page)
   await page.goto(`${ORIGIN}?note=board/none.md`)
   const status = page.locator('#status')
