@@ -691,6 +691,29 @@ function createGroupLabelElement(node) {
   return labelEl
 }
 
+/** JSON Canvas backgroundStyle values. A group that names none of them is drawn as `cover`. */
+const BACKGROUND_STYLES = ['cover', 'ratio', 'repeat']
+
+/**
+ * A group's background image fills its frame as its backgroundStyle names:
+ * `cover` crops the image to fill the frame, `ratio` shows the whole image at
+ * its own proportions, and `repeat` tiles it at its own size.
+ */
+function applyGroupBackground(el, node) {
+  const url = vaultUrl(node.background)
+  if (url === null) {
+    const hosts = REMOTE_HOSTS.join(', ')
+    const path = config.vaultRoot + node.background
+    console.warn(`group ${node.id}: a background loads from a same-origin path or an https URL on ${hosts}, not ${path}`)
+    return
+  }
+
+  // vaultUrl percent-encodes every path segment, so no quote in it ends the CSS string.
+  el.style.backgroundImage = `url("${url}")`
+  const isKnownStyle = BACKGROUND_STYLES.includes(node.backgroundStyle)
+  el.dataset.backgroundStyle = isKnownStyle ? node.backgroundStyle : 'cover'
+}
+
 function createNodeElement(node) {
   const el = document.createElement('div')
   el.className = 'canvas-node'
@@ -707,6 +730,7 @@ function createNodeElement(node) {
 
   if (node.type === 'group') {
     if (node.label) el.appendChild(createGroupLabelElement(node))
+    if (node.background) applyGroupBackground(el, node)
     return el
   }
 

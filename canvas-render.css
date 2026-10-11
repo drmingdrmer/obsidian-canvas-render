@@ -312,6 +312,24 @@ body {
   box-shadow: none;
 }
 
+/* A group's background image, sized as its backgroundStyle names. */
+.canvas-node[data-background-style] {
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.canvas-node[data-background-style="cover"] {
+  background-size: cover;
+}
+
+.canvas-node[data-background-style="ratio"] {
+  background-size: contain;
+}
+
+.canvas-node[data-background-style="repeat"] {
+  background-repeat: repeat;
+}
+
 .canvas-node-embed {
   width: 100%;
   height: 100%;

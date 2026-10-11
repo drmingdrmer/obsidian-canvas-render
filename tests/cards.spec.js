@@ -91,6 +91,30 @@ test('a group shows its label, holds no content, and is drawn behind the cards',
   await expect(cards.nth(0).locator('.canvas-node-content')).toHaveCount(0)
 })
 
+test('a group draws its background image in the style the file names, cover by default', async ({ page }) => {
+  const styles = ['cover', 'ratio', 'repeat', undefined, 'stretch']
+  const nodes = styles.map((backgroundStyle, i) => {
+    return { id: `g${i}`, type: 'group', x: i * 300, y: 0, width: 200, height: 100, background: 'dir/a b.svg', backgroundStyle }
+  })
+  const figure = route => route.fulfill({ body: FIGURE, contentType: 'image/svg+xml' })
+  await openBoard(page, { nodes }, { 'dir/a%20b.svg': figure })
+
+  const backgrounds = await page.locator('.canvas-node').evaluateAll(els => {
+    return els.map(el => {
+      const style = getComputedStyle(el)
+      return [style.backgroundImage, style.backgroundSize, style.backgroundRepeat]
+    })
+  })
+  const image = `url("${ORIGIN}board/dir/a%20b.svg")`
+  expect(backgrounds).toEqual([
+    [image, 'cover', 'no-repeat'],
+    [image, 'contain', 'no-repeat'],
+    [image, 'auto', 'repeat'],
+    [image, 'cover', 'no-repeat'],
+    [image, 'cover', 'no-repeat'],
+  ])
+})
+
 test('a node of an unknown type shows a placeholder', async ({ page }) => {
   await openBoard(page, { nodes: [{ id: 'u', type: 'weird', x: 0, y: 0, width: 200, height: 100 }] })
   await expect(page.locator('.canvas-node-placeholder')).toHaveText('Unsupported node type: weird')

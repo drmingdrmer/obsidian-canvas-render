@@ -160,3 +160,21 @@ test('a file card refuses a file on another host and requests nothing from it', 
   expect(placeholders).toEqual(files.map(file => `A file card loads a same-origin path or an https URL on raw.githubusercontent.com, not ${file}`))
   expect(requested).toEqual([])
 })
+
+test('a group refuses a background on another host and requests nothing from it', async ({ page }) => {
+  const requested = []
+  await page.route('**://evil.example/**', route => {
+    requested.push(route.request().url())
+    return route.fulfill({ body: 'evil' })
+  })
+  const warnings = []
+  page.on('console', message => {
+    if (message.type() === 'warning') warnings.push(message.text())
+  })
+  const group = { id: 'g', type: 'group', x: 0, y: 0, width: 300, height: 200, background: 'https://evil.example/i.png' }
+  await openBoard(page, { nodes: [group] }, {}, '&vault=')
+
+  await expect(page.locator('.canvas-node')).toHaveCSS('background-image', 'none')
+  expect(warnings).toEqual(['group g: a background loads from a same-origin path or an https URL on raw.githubusercontent.com, not https://evil.example/i.png'])
+  expect(requested).toEqual([])
+})
