@@ -52,19 +52,36 @@ test('the vault parameter sets where file cards read their notes', async ({ page
 
 test('a canvas that cannot be drawn shows why in the status line', async ({ page }) => {
   await serveApp(page)
-  await page.route('**/board/no-nodes.canvas', route => route.fulfill({ json: { edges: [] } }))
+  await page.route('**/board/list.canvas', route => route.fulfill({ json: [] }))
+  await page.route('**/board/node-map.canvas', route => route.fulfill({ json: { nodes: {} } }))
   await page.route('**/board/bad.canvas', route => route.fulfill({ body: '{not json' }))
   const status = page.locator('#status')
 
   await page.goto(`${ORIGIN}?canvas=board/none.canvas`)
   await expect(status).toHaveText('Cannot read board/none.canvas (HTTP 404)')
 
-  await page.goto(`${ORIGIN}?canvas=board/no-nodes.canvas`)
-  await expect(status).toHaveText('canvas file has no "nodes" array')
+  await page.goto(`${ORIGIN}?canvas=board/list.canvas`)
+  await expect(status).toHaveText('canvas file is not a JSON object')
+
+  await page.goto(`${ORIGIN}?canvas=board/node-map.canvas`)
+  await expect(status).toHaveText('canvas file has a "nodes" field that is not an array')
 
   // The parser's own message follows, and its wording differs between browsers.
   await page.goto(`${ORIGIN}?canvas=board/bad.canvas`)
   await expect(status).toHaveText(/^Cannot parse board\/bad\.canvas: .*JSON/)
+})
+
+test('a canvas without nodes draws an empty board', async ({ page }) => {
+  await serveApp(page)
+  await page.route('**/board/empty.canvas', route => route.fulfill({ json: {} }))
+  await page.route('**/board/edges-only.canvas', route => route.fulfill({ json: { edges: [] } }))
+
+  for (const name of ['empty.canvas', 'edges-only.canvas']) {
+    await page.goto(`${ORIGIN}?canvas=board/${name}`)
+    // An empty board draws no card to wait for; Grid is the last control main() installs.
+    await expect.soft(page.locator('#grid-snap'), name).toHaveAttribute('aria-pressed', 'false')
+    await expect.soft(page.locator('#status'), name).toBeHidden()
+  }
 })
 
 test('a file card shows Loading… until its note arrives, or why it failed', async ({ page }) => {

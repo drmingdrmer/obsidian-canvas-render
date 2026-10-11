@@ -1363,9 +1363,12 @@ function indexEdge(record) {
 }
 
 function drawCanvas(data) {
-  if (!Array.isArray(data.nodes)) throw new TypeError('canvas file has no "nodes" array')
+  const isObject = typeof data === 'object' && data !== null && !Array.isArray(data)
+  if (!isObject) throw new TypeError('canvas file is not a JSON object')
 
-  const nodes = data.nodes
+  // JSON Canvas makes both arrays optional, so `{}` is an empty board.
+  const nodes = data.nodes ?? []
+  if (!Array.isArray(nodes)) throw new TypeError('canvas file has a "nodes" field that is not an array')
   const edges = Array.isArray(data.edges) ? data.edges : []
   const nodesById = new Map(nodes.map(node => [node.id, node]))
   layout.nodes = nodes
