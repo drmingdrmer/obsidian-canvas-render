@@ -13,6 +13,7 @@ const SPLITS = [
 const NO_HEADER = [
   '# H\nbody', '- a\n- b', '1. a\nb', '> q\nb', '```\nx\n```', '| a |\n|---|', '---\nx',
   'Title\n===\nx', 'Title\n---\nx', 'Title', 'Title\n   \n', '\nbody', '',
+  '    code\n    more', '$$\nx\n$$', '<div>\nx\n</div>', 'a | b\n--|--',
 ]
 
 const NOTE = '# A\na\n## B\nb\n### C\nc\n## D\nd\n# E\ne'

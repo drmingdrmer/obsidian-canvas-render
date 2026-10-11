@@ -16,7 +16,7 @@ Nodes: `text`, `file`, `link`, `group`.
 Edges: `fromSide` / `toSide` (both optional), the `fromEnd` / `toEnd` arrow switches, `label`, `color`.
 Colors: Obsidian's six presets (`"1"`–`"6"`) and custom hex values.
 
-A text card whose first line is a paragraph with more text under it draws that line as a header strip and keeps it out of the body — a filled strip, where a file card's title row is transparent and carries links, so the two kinds of card stay apart. A first line that opens a heading, list, quote, code fence or table belongs to what follows it and stays in the body, rendered as written. Obsidian heads text cards with nothing at all; this is a deliberate difference.
+A text card whose first line is a paragraph with more text under it draws that line as a header strip and keeps it out of the body — a filled strip, where a file card's title row is transparent and carries links, so the two kinds of card stay apart. A first line that opens any other block — a heading, list, quote, code block, table or formula — belongs to what follows it and stays in the body, rendered as written. Obsidian heads text cards with nothing at all; this is a deliberate difference.
 
 Block-reference subpaths `#^blockid` render the whole document, and `[[wikilinks]]` are styled but not navigable.
 

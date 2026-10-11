@@ -626,17 +626,12 @@ function createTitleElement(node) {
   return titleEl
 }
 
-/** A line that opens a block: either a heading already, or a construct the next lines continue. */
-const BLOCK_OPENER = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~|\||---)/
-
-/** `===` or `---` under a line of prose, which makes that line a heading. */
-const SETEXT_UNDERLINE = /^(=+|-+)\s*$/
-
 /**
  * Text nodes are commonly written title first, so the first line becomes the
  * card's header — but only when it is a paragraph in its own right. A line that
  * opens a list, a quote, a fence or a heading belongs to what follows it, and
- * lifting it out would leave both halves wrong.
+ * lifting it out would leave both halves wrong. marked decides which, so the
+ * header agrees with how the card renders.
  */
 function splitTextNode(text) {
   const source = text || ''
@@ -646,8 +641,8 @@ function splitTextNode(text) {
 
   const wholeCardWouldBeHeader = body.trim() === ''
   if (firstLine === '' || wholeCardWouldBeHeader) return { header: null, body: source }
-  if (BLOCK_OPENER.test(firstLine)) return { header: null, body: source }
-  if (SETEXT_UNDERLINE.test(lines[1].trim())) return { header: null, body: source }
+  const firstBlock = marked.lexer(source)[0]
+  if (firstBlock.type !== 'paragraph') return { header: null, body: source }
 
   return { header: firstLine, body: body }
 }
