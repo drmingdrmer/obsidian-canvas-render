@@ -192,3 +192,17 @@ test('the dot grid spacing follows the zoom', async ({ page }) => {
   await page.evaluate(() => zoomAt(0, 0, 0.5))
   await expect(background).toHaveCSS('background-size', '10px 10px')
 })
+
+test('a zoomed-out dot grid draws every second, fourth, … dot, never closer than 8 px', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  const background = page.locator('#background')
+  // [zoom, the dot spacing drawn at it]; a board wider than a float can hold fits at zoom 0.
+  const spacings = [[0.3, '12px 12px'], [0.1, '8px 8px'], [0.05, '8px 8px'], [0, '0px 0px']]
+  for (const [zoom, spacing] of spacings) {
+    await page.evaluate(zoom => {
+      view.zoom = zoom
+      applyView()
+    }, zoom)
+    await expect.soft(background, `zoom ${zoom}`).toHaveCSS('background-size', spacing)
+  }
+})

@@ -53,6 +53,8 @@ const SANITIZE_OPTIONS = { ADD_TAGS: ['semantics', 'annotation'], RETURN_DOM_FRA
 const LINK_FRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
 
 const GRID_SIZE = 20
+/** The closest two background dots are drawn, in screen pixels; each dot is 2 px across. */
+const MIN_DOT_SPACING = 8
 const MIN_CARD_WIDTH = 120
 const MIN_CARD_HEIGHT = 60
 const MIN_ZOOM = 0.1
@@ -802,7 +804,10 @@ let shownZoomLabel = ''
 function applyView() {
   canvasEl.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`
 
-  const spacing = GRID_SIZE * view.zoom
+  // Dots closer than MIN_DOT_SPACING run together into a flat grey, so a
+  // zoomed-out board draws every second, fourth, … dot instead.
+  let spacing = GRID_SIZE * view.zoom
+  while (spacing > 0 && spacing < MIN_DOT_SPACING) spacing *= 2
   backgroundEl.style.backgroundSize = `${spacing}px ${spacing}px`
   backgroundEl.style.backgroundPosition = `${view.x % spacing}px ${view.y % spacing}px`
 
