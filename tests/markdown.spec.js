@@ -1,4 +1,4 @@
-const { test, expect, openBoard, textCard } = require('./helpers')
+const { test, expect, ORIGIN, openBoard, textCard } = require('./helpers')
 
 // [text, splitTextNode(text)]
 const SPLITS = [
@@ -121,12 +121,12 @@ const MARKDOWN = [
   ['---\ntitle: x\n---\nbody', '<p>body</p>\n'],
   ['---\r\ntitle: x\r\n---\r\nbody', '<p>body</p>\n'],
   ['intro\n\n---\nnot: frontmatter\n---\n', '<p>intro</p>\n<hr>\n<h2>not: frontmatter</h2>\n'],
-  ['[[Note]]', '<p><a class="internal-link is-unresolved" title="Note">Note</a></p>\n'],
-  ['[[Note|Alias]]', '<p><a class="internal-link is-unresolved" title="Note">Alias</a></p>\n'],
-  ['[[Note|]]', '<p><a class="internal-link is-unresolved" title="Note">Note</a></p>\n'],
-  ['[[Note#Heading]]', '<p><a class="internal-link is-unresolved" title="Note#Heading">Note &gt; Heading</a></p>\n'],
-  ['[[#Heading]]', '<p><a class="internal-link is-unresolved" title="#Heading">Heading</a></p>\n'],
-  ['[[a<b]]', '<p><a class="internal-link is-unresolved" title="a&lt;b">a&lt;b</a></p>\n'],
+  ['[[Note]]', '<p><a class="internal-link" title="Note">Note</a></p>\n'],
+  ['[[Note|Alias]]', '<p><a class="internal-link" title="Note">Alias</a></p>\n'],
+  ['[[Note|]]', '<p><a class="internal-link" title="Note">Note</a></p>\n'],
+  ['[[Note#Heading]]', '<p><a class="internal-link" title="Note#Heading">Note &gt; Heading</a></p>\n'],
+  ['[[#Heading]]', '<p><a class="internal-link" title="#Heading">Heading</a></p>\n'],
+  ['[[a<b]]', '<p><a class="internal-link" title="a&lt;b">a&lt;b</a></p>\n'],
   ['line1\nline2', '<p>line1<br>line2</p>\n'],
   ['~~gone~~', '<p><del>gone</del></p>\n'],
   ['- [ ] task\n- [x] done', '<ul>\n<li><input disabled="" type="checkbox"> task</li>\n<li><input checked="" disabled="" type="checkbox"> done</li>\n</ul>\n'],
@@ -174,5 +174,66 @@ test('markdownElement keeps KaTeX output whole', async ({ page }) => {
       return { sanitized: markdownElement(html, 'n.md').innerHTML, unsanitized: unsanitized.innerHTML }
     }, source)
     expect.soft(result.sanitized, source).toBe(result.unsanitized)
+  }
+})
+
+test('a wikilink to a note on the board fits the view to its card', async ({ page }) => {
+  const nodes = [
+    { id: 'a', type: 'file', file: 'pages/a.md', x: 0, y: 0, width: 300, height: 150 },
+    { id: 'b', type: 'file', file: 'pages/b.md', x: 600, y: 0, width: 200, height: 100 },
+  ]
+  await openBoard(page, { nodes }, { 'pages/a.md': 'See [[B]].', 'pages/b.md': 'b body' })
+  await page.locator('.internal-link').click()
+
+  // B's 200 × 100 card, centred at zoom 1 in the 1280 × 720 viewport.
+  const shown = await page.evaluate(() => ({ ...view }))
+  expect(shown).toEqual({ x: -60, y: 310, zoom: 1 })
+  await expect(page.locator('.canvas-node').nth(1)).toHaveAttribute('data-focused', 'true')
+  await expect(page).toHaveURL(`${ORIGIN}?canvas=board/board.canvas`)
+})
+
+test('a wikilink to a note not on the board opens it on its own, looked for beside the linking document', async ({ page }) => {
+  const nodes = [
+    { id: 'a', type: 'file', file: 'pages/a.md', x: 0, y: 0, width: 300, height: 150 },
+    textCard('t', 400, 0, '[[Top note]]'),
+  ]
+  const notes = { 'pages/a.md': '[[Other#Part|other]] [[#Local]]', 'pages/Other.md': 'other body [[a]]' }
+  await openBoard(page, { nodes }, notes)
+  const textCardLink = page.locator('.canvas-node').nth(1).locator('.internal-link')
+  await expect(textCardLink).toHaveAttribute('href', '?note=board%2FTop%20note.md')
+  const noteLinks = page.locator('.canvas-node').nth(0).locator('.internal-link')
+  await expect(noteLinks).toHaveCount(2)
+  const hrefs = await noteLinks.evaluateAll(els => els.map(el => el.getAttribute('href')))
+  expect(hrefs).toEqual(['?note=board%2Fpages%2FOther.md', null])
+
+  await noteLinks.nth(0).click()
+  await expect(page).toHaveURL(`${ORIGIN}?note=board%2Fpages%2FOther.md`)
+  const body = page.locator('#file-view-body')
+  await expect(body).toHaveText('other body a')
+  await expect(body.locator('.internal-link')).toHaveAttribute('href', '?note=board%2Fpages%2Fa.md')
+})
+
+// [link path, the id of the card linkedCard(link path) finds]
+const LINKED_CARDS = [
+  ['b', 'b'],
+  ['B', 'b'],
+  ['b.md', 'b'],
+  ['pages/b', 'b'],
+  ['ages/b', null],
+  ['pages', null],
+  ['pic.svg', 'p'],
+]
+
+test('linkedCard finds a file card by a path its file ends in, with or without .md, ignoring case', async ({ page }) => {
+  const nodes = [
+    textCard('t', 0, 0, 'T'),
+    { id: 'b', type: 'file', file: 'pages/b.md', x: 300, y: 0, width: 200, height: 100 },
+    { id: 'p', type: 'file', file: 'img/pic.svg', x: 600, y: 0, width: 200, height: 100 },
+  ]
+  const svg = route => route.fulfill({ body: '<svg xmlns="http://www.w3.org/2000/svg"/>', contentType: 'image/svg+xml' })
+  await openBoard(page, { nodes }, { 'pages/b.md': 'b body', 'img/pic.svg': svg })
+  for (const [linkPath, id] of LINKED_CARDS) {
+    const found = await page.evaluate(linkPath => linkedCard(linkPath)?.id ?? null, linkPath)
+    expect.soft(found, linkPath).toBe(id)
   }
 })

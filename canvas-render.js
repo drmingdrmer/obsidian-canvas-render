@@ -131,7 +131,7 @@ let fittedView = null
 let zoomFloor = MIN_ZOOM
 
 /** Read from the URL query at startup; the card size and the grid follow their controls. */
-const config = { canvasUrl: '', vaultRoot: '', attachments: null, cardSize: 'actual', snapToGrid: false }
+const config = { canvasPath: '', vaultRoot: '', attachments: null, cardSize: 'actual', snapToGrid: false }
 
 /**
  * The drawn canvas: node data, the element each node was drawn as, the edges on
@@ -198,7 +198,11 @@ function stripFrontmatter(source) {
   return source.slice(match[0].length)
 }
 
-/** `[[target|alias]]` and `[[target#heading]]` become a non-navigable link, as in an export. */
+/**
+ * `[[target|alias]]` and `[[target#heading]]` become a link with no destination
+ * yet: where it leads depends on the document it is written in, which
+ * `linkWikilink` knows.
+ */
 function wikilinkToHtml(body) {
   const pipeIndex = body.indexOf('|')
   const hasAlias = pipeIndex >= 0
@@ -208,7 +212,7 @@ function wikilinkToHtml(body) {
   const sections = target.split('#').map(section => section.trim())
   const targetLabel = sections.filter(section => section !== '').join(' > ')
   const label = alias.trim() === '' ? targetLabel : alias.trim()
-  return `<a class="internal-link is-unresolved" title="${escapeHtml(target.trim())}">${escapeHtml(label)}</a>`
+  return `<a class="internal-link" title="${escapeHtml(target.trim())}">${escapeHtml(label)}</a>`
 }
 
 function renderMath(item) {
@@ -462,8 +466,8 @@ function baseName(path) {
  * The sanitized fragment is not in the page yet, so no image has been
  * requested from the wrong place.
  */
-function resolveReferences(fragment, documentUrl) {
-  const baseUrl = new URL(documentUrl, window.location.href)
+function resolveReferences(fragment, documentPath) {
+  const baseUrl = new URL(encodePath(documentPath), window.location.href)
   for (const link of fragment.querySelectorAll('a[href]')) {
     const reference = link.getAttribute('href')
     if (reference.startsWith('#')) continue
@@ -472,7 +476,48 @@ function resolveReferences(fragment, documentUrl) {
     if (resolved === null) continue
     link.setAttribute('href', resolved.href)
   }
+  // After the loop above, which would resolve their `?note=` against the document.
+  for (const link of fragment.querySelectorAll('a.internal-link')) linkWikilink(link, documentPath)
   for (const image of fragment.querySelectorAll('img[src]')) loadImage(image, baseUrl)
+}
+
+/**
+ * The file card a wikilink names: one whose path ends in the link's path, with
+ * or without `.md`, ignoring case — the way Obsidian finds a note by its name
+ * alone. Null when no card on the board holds it.
+ */
+function linkedCard(linkPath) {
+  const wantedPaths = [linkPath, `${linkPath}.md`].map(path => `/${path.toLowerCase()}`)
+  const isLinked = node => {
+    if (node.type !== 'file') return false
+    const file = `/${node.file.toLowerCase()}`
+    return wantedPaths.some(wantedPath => file.endsWith(wantedPath))
+  }
+  return layout.nodes.find(isLinked) ?? null
+}
+
+/**
+ * A wikilink to a note that has a card on the board fits the view to that card.
+ * Any other opens the note on its own, looked for beside the document the link
+ * is written in, as Obsidian looks first; a click with a modifier key opens the
+ * link as the browser would. A link to a heading of its own document leads
+ * nowhere.
+ */
+function linkWikilink(link, documentPath) {
+  const linkPath = link.title.split('#')[0].trim()
+  if (linkPath === '') return
+
+  const notePath = fileExtension(linkPath) === 'md' ? linkPath : `${linkPath}.md`
+  link.href = noteHref(directoryOf(documentPath) + notePath)
+  link.addEventListener('click', event => {
+    const hasModifier = event.metaKey || event.ctrlKey || event.shiftKey
+    if (hasModifier) return
+    const node = linkedCard(linkPath)
+    if (node === null) return
+
+    event.preventDefault()
+    showCard(node)
+  })
 }
 
 /**
@@ -517,11 +562,11 @@ function loadImage(image, baseUrl) {
   image.src = urls[0]
 }
 
-function markdownElement(html, documentUrl) {
+function markdownElement(html, documentPath) {
   const el = document.createElement('div')
   el.className = 'markdown-preview'
   const fragment = DOMPurify.sanitize(html, SANITIZE_OPTIONS)
-  resolveReferences(fragment, documentUrl)
+  resolveReferences(fragment, documentPath)
   el.append(fragment)
   return el
 }
@@ -557,7 +602,7 @@ async function loadMarkdownInto(contentEl, node) {
 
   const source = await response.text()
   const section = sliceSubpath(source, node.subpath)
-  contentEl.replaceChildren(markdownElement(renderMarkdown(section), url))
+  contentEl.replaceChildren(markdownElement(renderMarkdown(section), config.vaultRoot + node.file))
 }
 
 function fillFileNode(contentEl, node) {
@@ -742,7 +787,7 @@ function splitTextNode(text) {
 function createTextHeaderElement(line) {
   const headerEl = document.createElement('div')
   headerEl.className = 'canvas-node-header'
-  headerEl.appendChild(markdownElement(renderMarkdown(line), config.canvasUrl))
+  headerEl.appendChild(markdownElement(renderMarkdown(line), config.canvasPath))
   return headerEl
 }
 
@@ -807,7 +852,7 @@ function createNodeElement(node) {
   el.appendChild(contentEl)
 
   if (node.type === 'text') {
-    contentEl.replaceChildren(markdownElement(renderMarkdown(text.body), config.canvasUrl))
+    contentEl.replaceChildren(markdownElement(renderMarkdown(text.body), config.canvasPath))
   } else if (node.type === 'file') {
     fillFileNode(contentEl, node)
   } else if (node.type === 'link') {
@@ -1804,7 +1849,7 @@ async function showFileView(path, mode) {
   const text = await response.text()
 
   if (!isRaw) {
-    fileViewBodyEl.replaceChildren(markdownElement(renderMarkdown(text), url))
+    fileViewBodyEl.replaceChildren(markdownElement(renderMarkdown(text), path))
     return
   }
 
@@ -1833,13 +1878,13 @@ async function main() {
 
   const canvasPath = params.get('canvas') || DEFAULT_CANVAS_PATH
   assertAllowedHost(canvasPath, 'canvas')
-  config.canvasUrl = encodePath(canvasPath)
+  config.canvasPath = canvasPath
   config.vaultRoot = resolveVaultRoot(params, canvasPath)
   config.attachments = resolveAttachments(params)
   config.cardSize = preferredCardSize(params)
 
   showStatus(`Loading ${canvasPath} …`)
-  const response = await fetchFile(config.canvasUrl, canvasPath)
+  const response = await fetchFile(encodePath(canvasPath), canvasPath)
 
   const data = await response.json().catch(cause => {
     throw new Error(`Cannot parse ${canvasPath}: ${cause.message}`, { cause: cause })

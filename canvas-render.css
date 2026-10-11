@@ -473,12 +473,7 @@ body {
 
 .markdown-preview .internal-link {
   color: var(--text-accent);
-  cursor: default;
   text-decoration-color: color-mix(in srgb, var(--text-accent) 40%, transparent);
-}
-
-.markdown-preview .internal-link.is-unresolved {
-  color: color-mix(in srgb, var(--text-accent) 55%, var(--text-faint));
 }
 
 .markdown-preview .katex-display {

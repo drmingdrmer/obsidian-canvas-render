@@ -86,3 +86,5 @@ The card size, the grid and the theme are all remembered across visits. Until th
 ## Reading a note on its own
 
 A note card's title row carries two links: the title text opens the note rendered for reading (`?note=`), and the `</>` icon beside it opens the same file's markdown source (`?raw=`). The title of any other file card, such as an image or a PDF, opens the file itself, and a link card's title points at its URL. When the board names an attachment folder, both note links carry it, along with the vault root, so that the note finds its images where the board does.
+
+A `[[wikilink]]` leads to the note it names. When the board has a card for that note, the link fits the view to the card and puts the focus on it; the card is found by a path its file ends in, ignoring case, as Obsidian finds a note by its name alone. Otherwise the link opens the note on its own, looked for beside the note or canvas the link is written in, since a browser cannot search the vault for it. `[[Note#Heading]]` opens the whole note.
