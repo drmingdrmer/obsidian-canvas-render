@@ -29,12 +29,15 @@ test('a markdown file card links its title to the note view and its icon to the 
 })
 
 test('an image card draws the image from the vault', async ({ page }) => {
-  const card = { id: 'i', type: 'file', file: 'dir/a b.png', x: 0, y: 0, width: 300, height: 150 }
-  await openBoard(page, { nodes: [card] })
-  await expect(page.locator('.canvas-node-title-text')).toHaveText('a b.png')
+  const card = { id: 'i', type: 'file', file: 'dir/a b.svg', x: 0, y: 0, width: 300, height: 150 }
+  const figure = route => route.fulfill({ body: FIGURE, contentType: 'image/svg+xml' })
+  await openBoard(page, { nodes: [card] }, { 'dir/a%20b.svg': figure })
+  await expect(page.locator('.canvas-node-title-text')).toHaveText('a b.svg')
   const image = page.locator('.canvas-node-image')
-  await expect(image).toHaveAttribute('src', 'board/dir/a%20b.png')
-  await expect(image).toHaveAttribute('alt', 'dir/a b.png')
+  await expect(image).toHaveAttribute('src', 'board/dir/a%20b.svg')
+  await expect(image).toHaveAttribute('alt', 'dir/a b.svg')
+  await expect(image).toHaveJSProperty('naturalWidth', 40)
+  await expect(image).toHaveJSProperty('naturalHeight', 30)
 })
 
 test('a file that is neither markdown nor an image is drawn in a frame', async ({ page }) => {
