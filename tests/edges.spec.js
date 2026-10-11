@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { openBoard, textCard } = require('./helpers')
+const { test, expect, openBoard, textCard } = require('./helpers')
 
 test('an edge with no sides joins the sides that face each other', async ({ page }) => {
   await openBoard(page, {

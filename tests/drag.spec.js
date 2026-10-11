@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { openBoard, textCard, dragBy, boxes } = require('./helpers')
+const { test, expect, openBoard, textCard, dragBy, boxes } = require('./helpers')
 
 test('with Grid on, a dragged card lands on the 20 px grid', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A\nbody')] })

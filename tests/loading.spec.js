@@ -1,11 +1,9 @@
 const fs = require('node:fs')
 const path = require('node:path')
-const { test, expect } = require('@playwright/test')
-const { ORIGIN, serveApp, openBoard } = require('./helpers')
+const { test, expect, ORIGIN, serveApp, openBoard } = require('./helpers')
 
 test('the demo board draws every card and edge, and loads every note', async ({ page }) => {
   const errors = []
-  page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => {
     if (message.type() === 'error') errors.push(message.text())
   })
@@ -50,7 +48,15 @@ test('the vault parameter sets where file cards read their notes', async ({ page
   await expect(page.locator('.canvas-node-title-link').first()).toHaveAttribute('href', '?note=notes%2Fn.md')
 })
 
-test('a canvas that cannot be drawn shows why in the status line', async ({ page }) => {
+test('a canvas that cannot be drawn shows why in the status line', async ({ page, expectedErrors }) => {
+  // main() shows each failure in the status line, and throws it too.
+  expectedErrors.push(
+    `HTTP 404 ${ORIGIN}board/none.canvas`,
+    'Cannot read board/none.canvas (HTTP 404)',
+    'canvas file is not a JSON object',
+    'canvas file has a "nodes" field that is not an array',
+    /^Cannot parse board\/bad\.canvas: /,
+  )
   await serveApp(page)
   await page.route('**/board/list.canvas', route => route.fulfill({ json: [] }))
   await page.route('**/board/node-map.canvas', route => route.fulfill({ json: { nodes: {} } }))
@@ -84,7 +90,8 @@ test('a canvas without nodes draws an empty board', async ({ page }) => {
   }
 })
 
-test('a file card shows Loading… until its note arrives, or why it failed', async ({ page }) => {
+test('a file card shows Loading… until its note arrives, or why it failed', async ({ page, expectedErrors }) => {
+  expectedErrors.push(`HTTP 404 ${ORIGIN}board/gone.md`)
   let releaseNote
   const noteHeld = new Promise(resolve => {
     releaseNote = resolve

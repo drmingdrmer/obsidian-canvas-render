@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { openBoard, textCard, dragBy, boxes } = require('./helpers')
+const { test, expect, openBoard, textCard, dragBy, boxes } = require('./helpers')
 
 // A card eases into a new size over 150 ms, unless the reader asks for less
 // motion; then a size read right after the change is already the final one.

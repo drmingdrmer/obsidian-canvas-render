@@ -4,10 +4,43 @@
 
 const fs = require('node:fs')
 const path = require('node:path')
-const { expect } = require('@playwright/test')
+const { test: base, expect } = require('@playwright/test')
 
 const APP_ROOT = path.join(__dirname, '..')
 const ORIGIN = 'http://canvas.test/'
+
+// Whether an expected error, a string or a RegExp, matches an error message.
+function matchesError(expected, error) {
+  if (typeof expected === 'string') return expected === error
+  return expected.test(error)
+}
+
+// A test fails on an error it does not expect: an uncaught exception or
+// rejection on the page, read as its message, or a response with an HTTP error
+// status, read as `HTTP <status> <url>`. A test that provokes one pushes a
+// string equal to it, or a RegExp matching it, into expectedErrors, and then
+// fails if it never happens.
+const test = base.extend({
+  expectedErrors: async ({}, use) => {
+    await use([])
+  },
+  page: async ({ page, expectedErrors }, use) => {
+    const errors = []
+    page.on('pageerror', error => errors.push(error.message))
+    page.on('response', response => {
+      if (response.status() < 400) return
+      errors.push(`HTTP ${response.status()} ${response.url()}`)
+    })
+    const mismatch = () => {
+      const unexpected = errors.filter(error => !expectedErrors.some(expected => matchesError(expected, error)))
+      const missing = expectedErrors.filter(expected => !errors.some(error => matchesError(expected, error)))
+      return { unexpected, missing }
+    }
+    await use(page)
+    // An expected error can arrive after the test's last step, so this waits for it.
+    await expect.poll(mismatch).toEqual({ unexpected: [], missing: [] })
+  },
+})
 
 // Answers the page's requests from the repository on disk. No server runs,
 // so no connection can be refused.
@@ -58,4 +91,4 @@ function boxes(page) {
   })
 }
 
-module.exports = { ORIGIN, serveApp, openBoard, textCard, dragBy, boxes }
+module.exports = { test, expect, ORIGIN, serveApp, openBoard, textCard, dragBy, boxes }

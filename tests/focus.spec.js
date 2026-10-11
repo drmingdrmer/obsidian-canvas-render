@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { openBoard, textCard } = require('./helpers')
+const { test, expect, openBoard, textCard } = require('./helpers')
 
 // Two cards whose 40 lines overflow their 100-unit height, so both can scroll.
 const LINES = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n\n')

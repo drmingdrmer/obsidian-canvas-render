@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { ORIGIN, serveApp } = require('./helpers')
+const { test, expect, ORIGIN, serveApp } = require('./helpers')
 
 const SOURCE = '---\ntag: x\n---\n# 标题\n中文 $x^2$ [[Link]]'
 
@@ -43,7 +42,8 @@ test('?raw= shows the source exactly, with a link back to the rendered note', as
   await expect(toggle).toHaveAttribute('href', '?note=board%2Fn.md')
 })
 
-test('a note that cannot be read shows why', async ({ page }) => {
+test('a note that cannot be read shows why', async ({ page, expectedErrors }) => {
+  expectedErrors.push(`HTTP 404 ${ORIGIN}board/none.md`, 'Cannot read board/none.md (HTTP 404)')
   await serveApp(page)
   await page.goto(`${ORIGIN}?note=board/none.md`)
   const status = page.locator('#status')
@@ -51,13 +51,14 @@ test('a note that cannot be read shows why', async ({ page }) => {
   await expect(status).toBeVisible()
 })
 
-test('a note from an allowed host is stripped of script before it is drawn', async ({ page }) => {
+test('a note from an allowed host is stripped of script before it is drawn', async ({ page, expectedErrors }) => {
   const url = 'https://raw.githubusercontent.com/u/r/main/n.md'
   const note = [
     '# Title',
     '<img src="missing.png" onerror="window.scriptRan = true"><script>window.scriptRan = true</script>',
     '[link](javascript:window.scriptRan=true)',
   ].join('\n')
+  expectedErrors.push('HTTP 404 https://raw.githubusercontent.com/u/r/main/missing.png')
   await serveApp(page)
   await page.route('https://raw.githubusercontent.com/**', route => route.fulfill({ status: 404 }))
   await page.route(url, route => route.fulfill({ body: note, headers: { 'access-control-allow-origin': '*' } }))

@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { ORIGIN, openBoard, textCard } = require('./helpers')
+const { test, expect, ORIGIN, openBoard, textCard } = require('./helpers')
 
 // 40 × 30 once decoded.
 const FIGURE = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="40" height="30"/></svg>'
@@ -42,7 +41,8 @@ test('an image card draws the image from the vault', async ({ page }) => {
 
 test('a file that is neither markdown nor an image is drawn in a frame', async ({ page }) => {
   const card = { id: 'p', type: 'file', file: 'doc.pdf', x: 0, y: 0, width: 300, height: 150 }
-  await openBoard(page, { nodes: [card] })
+  const pdf = route => route.fulfill({ body: '%PDF-1.4', contentType: 'application/pdf' })
+  await openBoard(page, { nodes: [card] }, { 'doc.pdf': pdf })
   await expect(page.locator('.canvas-node-embed')).toHaveAttribute('src', 'board/doc.pdf')
 })
 
@@ -112,14 +112,16 @@ test('a card color is a preset number or a hex value', async ({ page }) => {
 })
 
 test('an image or PDF card links its title to the file itself, with no source link', async ({ page }) => {
-  const image = { id: 'i', type: 'file', file: 'dir/a b.png', x: 0, y: 0, width: 300, height: 150 }
+  const image = { id: 'i', type: 'file', file: 'dir/a b.svg', x: 0, y: 0, width: 300, height: 150 }
   const pdf = { id: 'p', type: 'file', file: 'doc.pdf', x: 400, y: 0, width: 300, height: 150 }
-  await openBoard(page, { nodes: [image, pdf] })
+  const figure = route => route.fulfill({ body: FIGURE, contentType: 'image/svg+xml' })
+  const pdfFile = route => route.fulfill({ body: '%PDF-1.4', contentType: 'application/pdf' })
+  await openBoard(page, { nodes: [image, pdf] }, { 'dir/a%20b.svg': figure, 'doc.pdf': pdfFile })
   const links = await page.locator('.canvas-node-title-link').evaluateAll(els => {
     return els.map(el => ({ href: el.getAttribute('href'), title: el.title }))
   })
   expect(links).toEqual([
-    { href: 'board/dir/a%20b.png', title: 'Open dir/a b.png' },
+    { href: 'board/dir/a%20b.svg', title: 'Open dir/a b.svg' },
     { href: 'board/doc.pdf', title: 'Open doc.pdf' },
   ])
 })

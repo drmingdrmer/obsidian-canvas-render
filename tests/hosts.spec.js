@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { ORIGIN, serveApp, openBoard, textCard } = require('./helpers')
+const { test, expect, ORIGIN, serveApp, openBoard, textCard } = require('./helpers')
 
 // assertAllowedHost(path, 'canvas') passes for these
 const ALLOWED = [
@@ -136,9 +135,10 @@ test('preferredCardSize takes the cards parameter over the stored size', async (
   expect(message).toBe('the cards parameter accepts actual, wide, compact, got huge')
 })
 
-test('a refused parameter shows its message and draws no card', async ({ page }) => {
+test('a refused parameter shows its message and draws no card', async ({ page, expectedErrors }) => {
   await serveApp(page)
   for (const [query, message] of REFUSED_QUERIES) {
+    expectedErrors.push(message)
     await page.goto(`${ORIGIN}?${query}`)
     await expect.soft(page.locator('#status'), query).toHaveText(message)
     await expect.soft(page.locator('.canvas-node'), query).toHaveCount(0)

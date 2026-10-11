@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { openBoard, textCard } = require('./helpers')
+const { test, expect, openBoard, textCard } = require('./helpers')
 
 // [text, splitTextNode(text)]
 const SPLITS = [

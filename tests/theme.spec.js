@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { ORIGIN, serveApp, openBoard, textCard } = require('./helpers')
+const { test, expect, ORIGIN, serveApp, openBoard, textCard } = require('./helpers')
 
 test.use({ colorScheme: 'dark' })
 

@@ -1,5 +1,4 @@
-const { test, expect } = require('@playwright/test')
-const { openBoard, textCard, dragBy } = require('./helpers')
+const { test, expect, openBoard, textCard, dragBy } = require('./helpers')
 
 // [nodes, the view the opening fit gives in the 1280 × 720 viewport]
 const FITS = [
