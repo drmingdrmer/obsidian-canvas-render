@@ -751,9 +751,9 @@ function zoomAt(screenX, screenY, nextZoom) {
   applyView()
 }
 
-function zoomAroundCentre(factor) {
+function zoomAroundCentre(nextZoom) {
   const rect = wrapperEl.getBoundingClientRect()
-  zoomAt(rect.width / 2, rect.height / 2, view.zoom * factor)
+  zoomAt(rect.width / 2, rect.height / 2, nextZoom)
 }
 
 function fitToContent(bounds) {
@@ -887,9 +887,9 @@ function installViewportControls() {
     { passive: false },
   )
 
-  zoomInEl.addEventListener('click', () => zoomAroundCentre(ZOOM_STEP))
-  zoomOutEl.addEventListener('click', () => zoomAroundCentre(1 / ZOOM_STEP))
-  zoomResetEl.addEventListener('click', () => zoomAroundCentre(1 / view.zoom))
+  zoomInEl.addEventListener('click', () => zoomAroundCentre(view.zoom * ZOOM_STEP))
+  zoomOutEl.addEventListener('click', () => zoomAroundCentre(view.zoom / ZOOM_STEP))
+  zoomResetEl.addEventListener('click', () => zoomAroundCentre(1))
   // Recomputed at click time: a drag leaves the bounds captured at load stale.
   zoomFitEl.addEventListener('click', () => fitToContent(contentBounds(layout.nodes)))
 }

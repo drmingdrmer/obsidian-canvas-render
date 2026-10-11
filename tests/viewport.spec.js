@@ -76,11 +76,19 @@ test('the zoom stops at 3 and at 0.1, and the label resets it to 100%', async ({
   expect(lowest).toBe(0.1)
   await expect(label).toHaveText('10%')
 
-  // The reset multiplies by 1 / zoom, which leaves the zoom a rounding error off 1.
   await label.click()
   const reset = await page.evaluate(() => view.zoom)
-  expect(reset).toBeCloseTo(1)
+  expect(reset).toBe(1)
   await expect(label).toHaveText('100%')
+})
+
+test('the label resets the zoom to exactly 1', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  // 1.15 cubed times its inverse is 0.9999999999999999, not 1.
+  for (let i = 0; i < 3; i += 1) await page.locator('#zoom-in').click()
+  await page.locator('#zoom-reset').click()
+  const zoom = await page.evaluate(() => view.zoom)
+  expect(zoom).toBe(1)
 })
 
 test('Ctrl or Meta and the wheel zoom around the pointer', async ({ page }) => {
