@@ -62,9 +62,9 @@ test('a canvas that cannot be drawn shows why in the status line', async ({ page
   await page.goto(`${ORIGIN}?canvas=board/no-nodes.canvas`)
   await expect(status).toHaveText('canvas file has no "nodes" array')
 
-  // The parser's own message, whose wording differs between browsers.
+  // The parser's own message follows, and its wording differs between browsers.
   await page.goto(`${ORIGIN}?canvas=board/bad.canvas`)
-  await expect(status).toHaveText(/JSON/)
+  await expect(status).toHaveText(/^Cannot parse board\/bad\.canvas: .*JSON/)
 })
 
 test('a file card shows Loading… until its note arrives, or why it failed', async ({ page }) => {

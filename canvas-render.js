@@ -1448,7 +1448,9 @@ async function main() {
   const response = await fetchFile(encodePath(canvasPath))
   if (!response.ok) throw new Error(`Cannot read ${canvasPath} (HTTP ${response.status})`)
 
-  const data = await response.json()
+  const data = await response.json().catch(cause => {
+    throw new Error(`Cannot parse ${canvasPath}: ${cause.message}`, { cause: cause })
+  })
   statusEl.hidden = true
 
   drawCanvas(data)
