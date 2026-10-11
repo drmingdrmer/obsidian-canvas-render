@@ -464,13 +464,22 @@ body {
   position: absolute;
   bottom: 16px;
   left: 16px;
+  /* A narrow window wraps the bar into rows, 16px short of either edge. */
+  max-width: calc(100% - 32px);
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   background: var(--background-primary);
   box-shadow: var(--canvas-shadow);
+}
+
+/* A group moves to the next row whole, so a wrapped bar never splits it. */
+.canvas-control-group {
+  display: flex;
+  gap: 4px;
 }
 
 .canvas-control-item {

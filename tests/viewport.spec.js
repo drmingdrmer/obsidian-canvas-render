@@ -67,6 +67,23 @@ test('a window resize refits a view the reader has not moved, and leaves a moved
   expect(moved).toEqual({ x: 190, y: 90, zoom: 1 })
 })
 
+test('a narrow window wraps the control bar, so every button stays inside the window', async ({ page }) => {
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 640 })
+    await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+    const outside = await page.locator('.canvas-controls button').evaluateAll(els => {
+      const hidden = els.filter(el => {
+        const box = el.getBoundingClientRect()
+        const insideX = box.left >= 0 && box.right <= window.innerWidth
+        const insideY = box.top >= 0 && box.bottom <= window.innerHeight
+        return !(insideX && insideY)
+      })
+      return hidden.map(el => el.title)
+    })
+    expect.soft(outside, `${width} px wide`).toEqual([])
+  }
+})
+
 test('the zoom buttons zoom by 1.15 around the viewport centre', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
   const label = page.locator('#zoom-reset')
