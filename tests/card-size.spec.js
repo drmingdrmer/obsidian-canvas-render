@@ -113,6 +113,25 @@ test('a size change re-routes the edges', async ({ page }) => {
   await expect(line).toHaveAttribute('d', /^M 320 [\d.]+ C .* 600 [\d.]+$/)
 })
 
+test('a size change routes each edge once, though both its cards changed size', async ({ page }) => {
+  await openBoard(page, {
+    nodes: [textCard('a', 0, 0, 'A\nbody'), textCard('b', 600, 0, 'B\nbody')],
+    edges: [{ id: 'ab', fromNode: 'a', toNode: 'b' }],
+  })
+  const routed = await page.evaluate(() => {
+    const route = layoutEdge
+    const edgeIds = []
+    window.layoutEdge = record => {
+      edgeIds.push(record.edge.id)
+      route(record)
+    }
+    applyCardSize('compact')
+    window.layoutEdge = route
+    return edgeIds
+  })
+  expect(routed).toEqual(['ab'])
+})
+
 // Opens a Wide board whose file card stays at "Loading…" until the returned
 // function is called.
 async function openWithHeldNote(page) {

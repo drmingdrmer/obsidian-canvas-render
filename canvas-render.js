@@ -1302,41 +1302,71 @@ function applyNodeSize(el, node) {
   el.dataset.sized = 'content'
 }
 
+/** Copies the size a card was laid out at into its node data, and tells whether it changed. */
+function recordCardSize(node) {
+  const el = layout.elements.get(node.id)
+  const width = el.offsetWidth
+  const height = el.offsetHeight
+  const changed = width !== node.width || height !== node.height
+  node.width = width
+  node.height = height
+  return changed
+}
+
 /**
  * One read pass, after every card has been written: the browser lays out once,
  * and the size each card settled on goes back into the node data, which the
  * edges, the edge layer and the fit are all computed from.
  */
 function readCardSizes() {
-  for (const node of layout.nodes) {
-    const el = layout.elements.get(node.id)
-    node.width = el.offsetWidth
-    node.height = el.offsetHeight
-  }
+  for (const node of layout.nodes) recordCardSize(node)
 }
+
+/**
+ * Re-routes each edge attached to these resized nodes once, after all of them
+ * hold their new box, so an edge between two of them is routed with both. Then
+ * fits the edge layer to the board, and returns the board's bounds for the fit.
+ */
+function relayoutAfterResize(nodes) {
+  const records = new Set()
+  for (const node of nodes) {
+    const attached = layout.edgesByNode.get(node.id) ?? []
+    for (const record of attached) records.add(record)
+  }
+  for (const record of records) layoutEdge(record)
+
+  const bounds = contentBounds(layout.nodes)
+  resizeEdgeLayer(bounds)
+  return bounds
+}
+
+/** The node each observed card element draws. */
+const observedNodes = new WeakMap()
 
 /**
  * A content-sized card knows its height only once the browser has laid it out,
  * again whenever a note, an image or a formula lands, and on every frame of the
- * transition that eases it into a new size. The node data follows the element,
- * and everything computed from the box is redone — including the fit, for as
- * long as the view is still the one this page fitted.
+ * transition that eases it into a new size. One observer watches every card, so
+ * the cards resized in one frame are handled together: their node data follows
+ * the elements, and everything computed from the boxes is redone once —
+ * including the fit, for as long as the view is still the one this page fitted.
  */
+const cardSizeObserver = new ResizeObserver(entries => {
+  const resized = []
+  for (const entry of entries) {
+    const node = observedNodes.get(entry.target)
+    const changed = recordCardSize(node)
+    if (changed) resized.push(node)
+  }
+  if (resized.length === 0) return
+
+  const bounds = relayoutAfterResize(resized)
+  if (viewIsAsFitted()) fitToContent(bounds)
+})
+
 function observeCardSize(el, node) {
-  const observer = new ResizeObserver(() => {
-    const width = el.offsetWidth
-    const height = el.offsetHeight
-    if (width === node.width && height === node.height) return
-
-    node.width = width
-    node.height = height
-    relayoutNodeEdges(node)
-
-    const bounds = contentBounds(layout.nodes)
-    resizeEdgeLayer(bounds)
-    if (viewIsAsFitted()) fitToContent(bounds)
-  })
-  observer.observe(el)
+  observedNodes.set(el, node)
+  cardSizeObserver.observe(el)
 }
 
 /** Shows which of the three sizes the board is drawn at. */
@@ -1359,11 +1389,7 @@ function applyCardSize(sizeName) {
 
   for (const node of layout.nodes) applyNodeSize(layout.elements.get(node.id), node)
   readCardSizes()
-  // Both endpoints have to hold their new box before an edge between them is routed.
-  for (const node of layout.nodes) relayoutNodeEdges(node)
-
-  const bounds = contentBounds(layout.nodes)
-  resizeEdgeLayer(bounds)
+  const bounds = relayoutAfterResize(layout.nodes)
   fitToContent(bounds)
 }
 
