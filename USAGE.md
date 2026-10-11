@@ -32,7 +32,7 @@ Any static host serves the repository as-is. On GitHub Pages, **keep the `.nojek
 | `raw` | Show a single markdown file as plain source |
 | `cards` | Draw every card at one size — `actual`, `wide` or `compact` — instead of the size each card stores |
 
-`canvas`, `vault`, `note` and `raw` each take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is stripped of script before it is drawn, but the rest of it still appears as this page's own content.
+`canvas`, `vault`, `note` and `raw` each take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is stripped of script before it is drawn, but the rest of it still appears as this page's own content. The same rule holds for the file each file card names, once the vault root is put in front of it. A card whose file leads to any other host shows the refusal instead.
 
 File nodes store paths relative to the vault root, so a canvas sitting at the root of its own directory needs no `vault` — that is how `?canvas=vault/demo.canvas` works. Name the root explicitly when the canvas sits deeper in the vault, as it does in Obsidian when boards go in `boards/` and notes in `pages/`:
 

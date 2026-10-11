@@ -19,6 +19,7 @@ const REFUSED = [
   'javascript:alert(1)',
   'data:text/plain,x',
   'blob:http://canvas.test/x',
+  'http://[',
 ]
 
 // [path, encodePath(path)]
@@ -142,4 +143,21 @@ test('a refused parameter shows its message and draws no card', async ({ page })
     await expect.soft(page.locator('#status'), query).toHaveText(message)
     await expect.soft(page.locator('.canvas-node'), query).toHaveCount(0)
   }
+})
+
+test('a file card refuses a file on another host and requests nothing from it', async ({ page }) => {
+  const requested = []
+  await page.route('**://evil.example/**', route => {
+    requested.push(route.request().url())
+    return route.fulfill({ body: 'evil' })
+  })
+  // Under an empty vault root, the path a file node stores is the whole URL.
+  const files = ['https://evil.example/n.md', '//evil.example/p.pdf', 'https://evil.example/i.png']
+  const nodes = files.map((file, i) => ({ id: `f${i}`, type: 'file', file, x: i * 400, y: 0, width: 300, height: 200 }))
+  await openBoard(page, { nodes }, {}, '&vault=')
+
+  await expect(page.locator('.canvas-node-title-link')).toHaveCount(0)
+  const placeholders = await page.locator('.canvas-node-placeholder').allTextContents()
+  expect(placeholders).toEqual(files.map(file => `A file card loads a same-origin path or an https URL on raw.githubusercontent.com, not ${file}`))
+  expect(requested).toEqual([])
 })

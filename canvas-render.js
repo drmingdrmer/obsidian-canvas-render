@@ -28,10 +28,10 @@ const CARD_SIZES = {
 const CARD_SIZE_NAMES = Object.keys(CARD_SIZES)
 
 /**
- * Hosts besides this page's own origin that a canvas, a vault or a note may be
- * loaded from. Rendered markdown is stripped of script, but everything else in
- * it — text, images, links, forms — appears as this page's own content, so
- * extending the list is a trust decision.
+ * Hosts besides this page's own origin that a canvas, a vault, a note or a file
+ * card may be loaded from. Rendered markdown is stripped of script, but
+ * everything else in it — text, images, links, forms — appears as this page's
+ * own content, so extending the list is a trust decision.
  */
 const REMOTE_HOSTS = ['raw.githubusercontent.com']
 
@@ -403,8 +403,15 @@ function encodePath(path) {
   return prefix + segments.map(encodeURIComponent).join('/')
 }
 
+/**
+ * The URL of a file in the vault, or null when it leads to a host the page does
+ * not load from. The root does not keep every file on its own host: an empty
+ * root passes `https://host/x` through, and `/` turns `/host/x` into `//host/x`.
+ */
 function vaultUrl(path) {
-  return encodePath(config.vaultRoot + path)
+  const url = encodePath(config.vaultRoot + path)
+  if (!isAllowedSource(url)) return null
+  return url
 }
 
 function noteHref(path) {
@@ -489,12 +496,21 @@ async function loadMarkdownInto(contentEl, node) {
 }
 
 function fillFileNode(contentEl, node) {
+  const url = vaultUrl(node.file)
+  if (url === null) {
+    const hosts = REMOTE_HOSTS.join(', ')
+    const path = config.vaultRoot + node.file
+    const message = `A file card loads a same-origin path or an https URL on ${hosts}, not ${path}`
+    contentEl.replaceChildren(placeholderElement(message))
+    return
+  }
+
   const extension = fileExtension(node.file)
 
   if (IMAGE_EXTENSIONS.includes(extension)) {
     const image = document.createElement('img')
     image.className = 'canvas-node-image'
-    image.src = vaultUrl(node.file)
+    image.src = url
     image.alt = node.file
     contentEl.dataset.fill = 'true'
     contentEl.replaceChildren(image)
@@ -504,7 +520,7 @@ function fillFileNode(contentEl, node) {
   if (holdsEmbed(node)) {
     const frame = document.createElement('iframe')
     frame.className = 'canvas-node-embed'
-    frame.src = vaultUrl(node.file)
+    frame.src = url
     contentEl.dataset.fill = 'true'
     contentEl.replaceChildren(frame)
     return
@@ -600,10 +616,10 @@ function createTitleElement(node) {
   textEl.className = 'canvas-node-title-text'
   textEl.textContent = nodeTitleText(node)
 
-  // A link card names a URL it refuses, with nothing to follow.
+  // A card names a URL it refuses, with nothing to follow.
   const isLink = node.type === 'link'
-  const linkUrl = isLink ? webUrl(node.url) : null
-  if (isLink && linkUrl === null) {
+  const url = isLink ? webUrl(node.url) : vaultUrl(node.file)
+  if (url === null) {
     titleEl.appendChild(textEl)
     return titleEl
   }
@@ -613,11 +629,11 @@ function createTitleElement(node) {
   const isNote = !isLink && fileExtension(node.file) === 'md'
   let primaryEl = null
   if (isLink) {
-    primaryEl = createTitleLink(linkUrl, `Open ${node.url}`)
+    primaryEl = createTitleLink(url, `Open ${node.url}`)
   } else if (isNote) {
     primaryEl = createTitleLink(noteHref(config.vaultRoot + node.file), `Read ${node.file}`)
   } else {
-    primaryEl = createTitleLink(vaultUrl(node.file), `Open ${node.file}`)
+    primaryEl = createTitleLink(url, `Open ${node.file}`)
   }
 
   primaryEl.append(textEl, createIcon(EXTERNAL_LINK_ICON))
@@ -1418,16 +1434,21 @@ function showStatus(message) {
  * `REMOTE_HOSTS`. Any other host, and any other scheme — `data:`, `javascript:`
  * — is either a configuration mistake or an attempt to run foreign script here.
  */
-function assertAllowedHost(path, parameterName) {
-  const url = new URL(path, window.location.href)
+function isAllowedSource(path) {
+  const url = URL.parse(path, window.location.href)
+  if (url === null) return false
 
   const isSameProtocol = url.protocol === window.location.protocol
   const isSameHost = url.host === window.location.host
-  if (isSameProtocol && isSameHost) return
+  if (isSameProtocol && isSameHost) return true
 
   const isHttps = url.protocol === 'https:'
   const isAllowedHost = REMOTE_HOSTS.includes(url.hostname)
-  if (isHttps && isAllowedHost) return
+  return isHttps && isAllowedHost
+}
+
+function assertAllowedHost(path, parameterName) {
+  if (isAllowedSource(path)) return
 
   const hosts = REMOTE_HOSTS.join(', ')
   throw new Error(
