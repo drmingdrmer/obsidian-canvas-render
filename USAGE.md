@@ -8,7 +8,7 @@ The page fetches its content at runtime, so it has to be served over HTTP:
 ./serve.sh          # port 8000 by default; pass another as the first argument
 ```
 
-Point it at a canvas with `?canvas=my-board/index.canvas`. That canvas file and the notes it references must sit under the served directory, keeping the paths the canvas stores. `sync-vault.sh` copies them out of an Obsidian vault for you, and fails if one of them is missing there:
+Point it at a canvas with `?canvas=my-board/index.canvas`. That canvas file and the notes it references must sit under the served directory, keeping the paths the canvas stores. `sync-vault.sh` copies them out of an Obsidian vault for you. It copies nothing if one of them is missing there, or if a path leads outside the vault or the canvas directory:
 
 ```bash
 ./sync-vault.sh ~/Documents/my-vault my-board/index.canvas
