@@ -264,33 +264,36 @@ function renderMarkdown(source) {
   return marked.parse(body)
 }
 
-/** Keeps only the section a `#Heading` subpath points at. */
+/**
+ * Keeps only the section a `#Heading` subpath points at. The headings are the
+ * ones marked parses, so a `#` line inside code is none, and a setext heading
+ * is one.
+ */
 function sliceSubpath(markdown, subpath) {
   if (!subpath) return markdown
   if (!subpath.startsWith('#')) return markdown
 
   const heading = subpath.slice(1).trim()
-  const lines = markdown.split('\n')
-  const isTargetHeading = line => {
-    const match = line.match(/^(#{1,6})\s+(.*)$/)
-    if (!match) return false
-    return match[2].trim() === heading
+  const blocks = marked.lexer(markdown)
+  const isTargetHeading = block => {
+    if (block.type !== 'heading') return false
+    return block.text.trim() === heading
   }
 
-  const startIndex = lines.findIndex(isTargetHeading)
+  const startIndex = blocks.findIndex(isTargetHeading)
   if (startIndex < 0) return markdown
 
-  const startLevel = lines[startIndex].match(/^#+/)[0].length
-  let endIndex = lines.length
-  for (let i = startIndex + 1; i < lines.length; i += 1) {
-    const match = lines[i].match(/^(#{1,6})\s/)
-    if (!match) continue
-    if (match[1].length > startLevel) continue
+  const startDepth = blocks[startIndex].depth
+  let endIndex = blocks.length
+  for (let i = startIndex + 1; i < blocks.length; i += 1) {
+    const block = blocks[i]
+    if (block.type !== 'heading') continue
+    if (block.depth > startDepth) continue
     endIndex = i
     break
   }
 
-  return lines.slice(startIndex, endIndex).join('\n')
+  return blocks.slice(startIndex, endIndex).map(block => block.raw).join('')
 }
 
 // ------------------------------------------------------------------ geometry

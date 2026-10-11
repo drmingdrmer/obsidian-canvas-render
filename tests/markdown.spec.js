@@ -20,11 +20,11 @@ const NOTE = '# A\na\n## B\nb\n### C\nc\n## D\nd\n# E\ne'
 
 // [subpath, sliceSubpath(NOTE, subpath)]
 const SLICES = [
-  ['#B', '## B\nb\n### C\nc'],
-  ['#C', '### C\nc'],
-  ['#A', '# A\na\n## B\nb\n### C\nc\n## D\nd'],
+  ['#B', '## B\nb\n### C\nc\n'],
+  ['#C', '### C\nc\n'],
+  ['#A', '# A\na\n## B\nb\n### C\nc\n## D\nd\n'],
   ['#E', '# E\ne'],
-  ['# B ', '## B\nb\n### C\nc'],
+  ['# B ', '## B\nb\n### C\nc\n'],
   ['#Missing', NOTE],
   ['#^block1', NOTE],
   ['B', NOTE],
@@ -50,12 +50,31 @@ test('splitTextNode leaves a block opener, a setext heading and a lone line in t
   expect(missing).toEqual({ header: null, body: '' })
 })
 
+const CODE_NOTE = '# A\nkeep\n```js\n# B\nnot a heading\n```\nstill A\n# C\nend'
+
+// [note, subpath, sliceSubpath(note, subpath)]: a `#` line in code is no
+// heading, and closing hashes and a setext underline are part of one
+const PARSED_SLICES = [
+  [CODE_NOTE, '#A', '# A\nkeep\n```js\n# B\nnot a heading\n```\nstill A\n'],
+  [CODE_NOTE, '#B', CODE_NOTE],
+  ['# A ###\na\n# C\nc', '#A', '# A ###\na\n'],
+  ['A\n===\na\n# C\nc', '#A', 'A\n===\na\n'],
+]
+
 test('sliceSubpath keeps the named heading and the deeper headings under it', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
   for (const [subpath, slice] of SLICES) {
     const args = [NOTE, subpath]
     const result = await page.evaluate(([note, subpath]) => sliceSubpath(note, subpath), args)
     expect.soft(result, subpath).toBe(slice)
+  }
+})
+
+test('sliceSubpath finds the headings marked parses', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  for (const [note, subpath, slice] of PARSED_SLICES) {
+    const result = await page.evaluate(([note, subpath]) => sliceSubpath(note, subpath), [note, subpath])
+    expect.soft(result, `${note} ${subpath}`).toBe(slice)
   }
 })
 
