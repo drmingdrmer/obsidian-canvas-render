@@ -23,10 +23,23 @@ test('the opening fit centres the board, at zoom 1 at most', async ({ page }) =>
   }
 })
 
-test('the fit zooms out no further than 0.1, even when the board does not fit', async ({ page }) => {
+test('the fit zooms below 0.1 when the board needs it, and the zoom buttons go on from there', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A'), textCard('b', 40000, 0, 'B')] })
+  // 1160 pixels inside the padding, for a board 40200 units wide.
+  const fitted = 1160 / 40200
   const zoom = await page.evaluate(() => view.zoom)
-  expect(zoom).toBe(0.1)
+  expect(zoom).toBe(fitted)
+  const left = await page.locator('.canvas-node').first().boundingBox()
+  const right = await page.locator('.canvas-node').last().boundingBox()
+  expect(left.x).toBeCloseTo(60)
+  expect(right.x + right.width).toBeCloseTo(1220)
+
+  await page.locator('#zoom-out').click()
+  const floor = await page.evaluate(() => view.zoom)
+  expect(floor).toBe(fitted)
+  await page.locator('#zoom-in').click()
+  const zoomedIn = await page.evaluate(() => view.zoom)
+  expect(zoomedIn).toBeCloseTo(fitted * 1.15)
 })
 
 test('Fit fits the board as a drag left it', async ({ page }) => {

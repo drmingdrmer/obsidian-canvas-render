@@ -120,6 +120,9 @@ const view = { x: 0, y: 0, zoom: 1 }
 /** The view as `fitToContent` last left it; a pan or a zoom by the reader makes it stale. */
 let fittedView = null
 
+/** The zoom controls stop at 10%, or lower when the last fit needed less to show the whole board. */
+let zoomFloor = MIN_ZOOM
+
 /** Read from the URL query at startup; the card size and the grid follow their controls. */
 const config = { canvasUrl: '', vaultRoot: '', cardSize: 'actual', snapToGrid: false }
 
@@ -794,7 +797,7 @@ function applyView() {
 }
 
 function zoomAt(screenX, screenY, nextZoom) {
-  const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom))
+  const clamped = Math.min(MAX_ZOOM, Math.max(zoomFloor, nextZoom))
   const canvasX = (screenX - view.x) / view.zoom
   const canvasY = (screenY - view.y) / view.zoom
 
@@ -814,13 +817,15 @@ function fitToContent(bounds) {
   const contentWidth = bounds.maxX - bounds.minX
   const contentHeight = bounds.maxY - bounds.minY
 
-  const availableWidth = rect.width - FIT_PADDING * 2
-  const availableHeight = rect.height - FIT_PADDING * 2
+  // A viewport smaller than the padding still gets a scale above zero.
+  const availableWidth = Math.max(rect.width - FIT_PADDING * 2, 1)
+  const availableHeight = Math.max(rect.height - FIT_PADDING * 2, 1)
   const scaleX = availableWidth / Math.max(contentWidth, 1)
   const scaleY = availableHeight / Math.max(contentHeight, 1)
   const scale = Math.min(scaleX, scaleY, FIT_MAX_ZOOM)
 
-  view.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale))
+  view.zoom = scale
+  zoomFloor = Math.min(MIN_ZOOM, scale)
   view.x = rect.width / 2 - (bounds.minX + contentWidth / 2) * view.zoom
   view.y = rect.height / 2 - (bounds.minY + contentHeight / 2) * view.zoom
   applyView()
