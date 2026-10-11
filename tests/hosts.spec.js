@@ -49,6 +49,9 @@ const REFUSED_QUERIES = [
   ['raw=https://evil.example/n.md', refusal('raw', 'https://evil.example/n.md')],
   ['canvas=board/board.canvas&vault=https://evil.example/', refusal('vault', 'https://evil.example/')],
   ['cards=huge', 'the cards parameter accepts actual, wide, compact, got huge'],
+  ['cards=toString', 'the cards parameter accepts actual, wide, compact, got toString'],
+  ['cards=constructor', 'the cards parameter accepts actual, wide, compact, got constructor'],
+  ['cards=__proto__', 'the cards parameter accepts actual, wide, compact, got __proto__'],
 ]
 
 // Runs in the page: 'ok' when the canvas parameter may hold the path, or else
@@ -116,9 +119,11 @@ test('preferredCardSize takes the cards parameter over the stored size', async (
     const stored = preferredCardSize(new URLSearchParams(''))
     localStorage.setItem(CARD_SIZE_STORAGE_KEY, 'bogus')
     const storedUnknown = preferredCardSize(new URLSearchParams(''))
-    return { fromParameter, parameterOverStored, stored, storedUnknown }
+    localStorage.setItem(CARD_SIZE_STORAGE_KEY, 'toString')
+    const storedInherited = preferredCardSize(new URLSearchParams(''))
+    return { fromParameter, parameterOverStored, stored, storedUnknown, storedInherited }
   })
-  expect(sizes).toEqual({ fromParameter: 'wide', parameterOverStored: 'actual', stored: 'compact', storedUnknown: 'actual' })
+  expect(sizes).toEqual({ fromParameter: 'wide', parameterOverStored: 'actual', stored: 'compact', storedUnknown: 'actual', storedInherited: 'actual' })
 
   const message = await page.evaluate(() => {
     try {

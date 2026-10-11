@@ -1319,13 +1319,13 @@ function applyCardSize(sizeName) {
 function preferredCardSize(params) {
   const requested = params.get('cards')
   if (requested !== null) {
-    if (requested in CARD_SIZES) return requested
+    if (Object.hasOwn(CARD_SIZES, requested)) return requested
     const names = CARD_SIZE_NAMES.join(', ')
     throw new Error(`the cards parameter accepts ${names}, got ${requested}`)
   }
 
   const stored = localStorage.getItem(CARD_SIZE_STORAGE_KEY)
-  if (stored !== null && stored in CARD_SIZES) return stored
+  if (stored !== null && Object.hasOwn(CARD_SIZES, stored)) return stored
   return 'actual'
 }
 
