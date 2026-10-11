@@ -19,14 +19,15 @@ test('a wheel scrolls the focused card, and pans the board over any other card',
   await contentA.click()
   const viewBefore = await page.evaluate(() => ({ ...view }))
 
-  await page.mouse.wheel(0, 60)
-  await expect.poll(() => contentA.evaluate(el => el.scrollTop)).toBe(60)
+  // Firefox scrolls at most 90% of the 55 px content box per wheel event.
+  await page.mouse.wheel(0, 40)
+  await expect.poll(() => contentA.evaluate(el => el.scrollTop)).toBe(40)
   const viewAfterScroll = await page.evaluate(() => ({ ...view }))
   expect(viewAfterScroll).toEqual(viewBefore)
 
   await contentB.hover()
-  await page.mouse.wheel(0, 60)
-  await expect.poll(() => page.evaluate(() => view.y)).toBe(viewBefore.y - 60)
+  await page.mouse.wheel(0, 40)
+  await expect.poll(() => page.evaluate(() => view.y)).toBe(viewBefore.y - 40)
   const scrollTopB = await contentB.evaluate(el => el.scrollTop)
   expect(scrollTopB).toBe(0)
 })

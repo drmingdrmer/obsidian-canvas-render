@@ -1,6 +1,6 @@
 // Helpers for the browser tests of canvas-render.js. Run the tests from this
-// directory: `npm install` and `npx playwright install chromium` once, then
-// `npx playwright test`.
+// directory: `npm install` and `npx playwright install chromium firefox webkit`
+// once, then `npx playwright test`.
 
 const fs = require('node:fs')
 const path = require('node:path')

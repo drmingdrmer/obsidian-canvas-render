@@ -90,7 +90,7 @@ test('a canvas that cannot be drawn shows why in the status line', async ({ page
 
   // The parser's own message follows, and its wording differs between browsers.
   await page.goto(`${ORIGIN}?canvas=board/bad.canvas`)
-  await expect(status).toHaveText(/^Cannot parse board\/bad\.canvas: .*JSON/)
+  await expect(status).toHaveText(/^Cannot parse board\/bad\.canvas: \S/)
 })
 
 test('a canvas without nodes draws an empty board', async ({ page }) => {
