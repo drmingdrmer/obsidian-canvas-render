@@ -1,4 +1,4 @@
-const { test, expect, openBoard, textCard, dragBy } = require('./helpers')
+const { test, expect, ORIGIN, openBoard, textCard, dragBy } = require('./helpers')
 
 // [nodes, the view the opening fit gives in the 1280 × 720 viewport]
 const FITS = [
@@ -239,4 +239,81 @@ test('the dots sit on the points Grid snaps a card to', async ({ page }) => {
     return { columns: [...columns].sort((a, b) => a - b), rows: [...rows].sort((a, b) => a - b) }
   }, shot.toString('base64'))
   expect(dark).toEqual({ columns: [6, 7, 26, 27], rows: [12, 13, 32, 33] })
+})
+
+// [at, the view it opens on in the 1280 × 720 viewport]: that canvas point at
+// the centre, at that zoom held between 0.1 and 3.
+const AT_VIEWS = [
+  ['100,50,2', { x: 440, y: 260, zoom: 2 }],
+  ['-100.5,0,1', { x: 740.5, y: 360, zoom: 1 }],
+  ['0,0,10', { x: 640, y: 360, zoom: 3 }],
+  ['0,0,0', { x: 640, y: 360, zoom: 0.1 }],
+]
+
+test('at opens the view on a canvas point at the centre of the viewport, at a zoom within the limits', async ({ page }) => {
+  for (const [at, opened] of AT_VIEWS) {
+    await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] }, {}, `&at=${at}`)
+    const result = await page.evaluate(() => ({ ...view }))
+    expect.soft(result, at).toEqual(opened)
+  }
+})
+
+test('focus opens the view fitted to that card with the focus on it, and wins over at', async ({ page }) => {
+  const nodes = [textCard('a', 0, 0, 'A'), textCard('b', 600, 0, 'B')]
+  for (const query of ['&focus=b', '&at=0,0,2&focus=b']) {
+    await openBoard(page, { nodes }, {}, query)
+    // B's 200 × 100 card, centred at zoom 1.
+    const shown = await page.evaluate(() => ({ ...view }))
+    expect.soft(shown, query).toEqual({ x: -60, y: 310, zoom: 1 })
+    await expect.soft(page.locator('.canvas-node').nth(1), query).toHaveAttribute('data-focused', 'true')
+  }
+})
+
+test('a focus that names no card says so, and leaves the whole board in view', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] }, {}, '&focus=gone')
+  await expect(page.locator('#status')).toHaveText('the focus parameter accepts the id of a card on this board, got gone')
+  const result = await page.evaluate(() => ({ ...view }))
+  expect(result).toEqual({ x: 540, y: 310, zoom: 1 })
+  await expect(page).toHaveURL(`${ORIGIN}?canvas=board/board.canvas`)
+})
+
+test('the address bar follows the view, and keeps the other parameters as typed', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A'), textCard('b', 600, 0, 'B')] }, {}, '&vault=board/')
+  const board = `${ORIGIN}?canvas=board/board.canvas&vault=board/`
+
+  // The fit puts canvas point (400, 50) at the centre, and the wheel moves it on by (30, 40).
+  await page.mouse.move(100, 100)
+  await page.mouse.wheel(30, 40)
+  await expect(page).toHaveURL(`${board}&at=430,90,1`)
+  // A moved view keeps its corner in a smaller window, so another point is at the centre.
+  await page.setViewportSize({ width: 640, height: 360 })
+  await expect(page).toHaveURL(`${board}&at=110,-90,1`)
+  await page.locator('#zoom-in').click()
+  await expect(page).toHaveURL(`${board}&at=110,-90,1.15`)
+
+  await page.locator('#search').fill('B')
+  await page.locator('#search').press('Enter')
+  await expect(page).toHaveURL(`${board}&focus=b`)
+  await page.locator('#zoom-fit').click()
+  await expect(page).toHaveURL(board)
+})
+
+test('a run of view changes rewrites the address bar once, after the view settles', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  // Safari throws past 100 history changes in 10 seconds.
+  await page.evaluate(() => {
+    window.replaceStateCalls = 0
+    const replaceState = history.replaceState.bind(history)
+    history.replaceState = (...args) => {
+      window.replaceStateCalls += 1
+      replaceState(...args)
+    }
+    for (let i = 0; i < 200; i += 1) {
+      view.x += 1
+      applyView()
+    }
+  })
+  await expect(page).toHaveURL(`${ORIGIN}?canvas=board/board.canvas&at=-100,50,1`)
+  const calls = await page.evaluate(() => window.replaceStateCalls)
+  expect(calls).toBe(1)
 })

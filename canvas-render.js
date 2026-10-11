@@ -66,6 +66,13 @@ const FIT_MAX_ZOOM = 1
 /** Wheel delta that doubles the zoom, divided by ln 2. Larger means gentler. */
 const ZOOM_WHEEL_SENSITIVITY = 400
 
+/**
+ * How long the view has to stay put, in milliseconds, before the address bar
+ * follows it. Following every frame of a pan would run into Safari's limit of
+ * 100 history changes in 10 seconds, past which `replaceState` throws.
+ */
+const VIEW_URL_DELAY = 300
+
 /** Extra room around the node bounding box so bowed edges are not clipped. */
 const EDGE_LAYER_MARGIN = 400
 
@@ -947,6 +954,8 @@ function applyView() {
   const tileY = view.y % spacing - spacing / 2
   backgroundEl.style.backgroundPosition = `${tileX}px ${tileY}px`
 
+  scheduleViewUrl()
+
   const zoomLabel = `${Math.round(view.zoom * 100)}%`
   if (zoomLabel === shownZoomLabel) return
   shownZoomLabel = zoomLabel
@@ -1136,9 +1145,99 @@ function installViewportControls() {
   // Recomputed at click time: a drag leaves the bounds captured at load stale.
   zoomFitEl.addEventListener('click', () => fitToContent(contentBounds(layout.nodes)))
 
-  // A resized window refits the view, unless the reader has moved it since the fit.
-  const observer = new ResizeObserver(refitView)
+  // A resized window refits the view, unless the reader has moved it since the
+  // fit; a moved view keeps its corner, so the address bar takes its new centre.
+  const observer = new ResizeObserver(() => {
+    refitView()
+    scheduleViewUrl()
+  })
   observer.observe(wrapperEl)
+}
+
+// --------------------------------------------------------------- address bar
+
+/** `at=<x>,<y>,<zoom>`: three decimal numbers, the zoom without a sign. */
+const AT_PATTERN = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(\d+(?:\.\d+)?)$/
+
+/**
+ * The view the `at` parameter names, or null without one: the canvas point at
+ * the centre of the viewport, and the zoom. A centre rather than a corner keeps
+ * a link on the same spot in a window of another size.
+ */
+function requestedCentre(params) {
+  const value = params.get('at')
+  if (value === null) return null
+
+  const match = AT_PATTERN.exec(value)
+  if (match === null) throw new Error(`the at parameter accepts <x>,<y>,<zoom>, got ${value}`)
+  const [x, y, zoom] = match.slice(1).map(Number)
+  return { x: x, y: y, zoom: zoom }
+}
+
+/** Puts the canvas point `at` names at the centre of the viewport, then zooms around it to its zoom. */
+function centreView(centre) {
+  const rect = wrapperEl.getBoundingClientRect()
+  const screenX = rect.width / 2
+  const screenY = rect.height / 2
+  view.x = screenX - centre.x * view.zoom
+  view.y = screenY - centre.y * view.zoom
+  zoomAt(screenX, screenY, centre.zoom)
+}
+
+/** Fits the view to the card `focus` names, or says that the board holds no such card. */
+function showRequestedCard(id) {
+  const node = layout.nodes.find(node => node.id === id)
+  if (node === undefined) {
+    showStatus(`the focus parameter accepts the id of a card on this board, got ${id}`)
+    return
+  }
+  showCard(node)
+}
+
+/** The pending rewrite of the address bar, put off while the view keeps moving. */
+let viewUrlTimer = 0
+
+function scheduleViewUrl() {
+  clearTimeout(viewUrlTimer)
+  viewUrlTimer = setTimeout(writeViewUrl, VIEW_URL_DELAY)
+}
+
+/**
+ * The view as a link spells it: `focus=<id>` while it is fitted to one card,
+ * nothing while it is fitted to the whole board, which a link opens on anyway,
+ * and otherwise `at=` with the canvas point at the centre and the zoom.
+ */
+function viewParameter() {
+  if (viewIsAsFitted()) {
+    const node = fittedView.node
+    if (node === null) return null
+    return `focus=${encodeURIComponent(node.id)}`
+  }
+
+  const rect = wrapperEl.getBoundingClientRect()
+  const centreX = (rect.width / 2 - view.x) / view.zoom
+  const centreY = (rect.height / 2 - view.y) / view.zoom
+  const zoom = Number(view.zoom.toPrecision(3))
+  return `at=${Math.round(centreX)},${Math.round(centreY)},${zoom}`
+}
+
+/**
+ * Rewrites `at` and `focus` in the address bar to the view, and keeps every
+ * other parameter as it was typed: URLSearchParams would encode the slashes in
+ * `canvas` and the commas in `at`.
+ */
+function writeViewUrl() {
+  const pairs = window.location.search.slice(1).split('&')
+  const parameters = pairs.filter(pair => {
+    const name = pair.split('=')[0]
+    return name !== '' && name !== 'at' && name !== 'focus'
+  })
+  const viewPair = viewParameter()
+  if (viewPair !== null) parameters.push(viewPair)
+
+  const search = parameters.length === 0 ? '' : `?${parameters.join('&')}`
+  if (search === window.location.search) return
+  history.replaceState(null, '', `${window.location.pathname}${search}${window.location.hash}`)
 }
 
 // ------------------------------------------------------------------ dragging
@@ -1882,6 +1981,7 @@ async function main() {
   config.vaultRoot = resolveVaultRoot(params, canvasPath)
   config.attachments = resolveAttachments(params)
   config.cardSize = preferredCardSize(params)
+  const centre = requestedCentre(params)
 
   showStatus(`Loading ${canvasPath} …`)
   const response = await fetchFile(encodePath(canvasPath), canvasPath)
@@ -1893,6 +1993,10 @@ async function main() {
 
   drawCanvas(data)
   fitToContent(contentBounds(layout.nodes))
+  // A link that names a view opens on it in place of the fit, `focus` over `at`.
+  if (centre !== null) centreView(centre)
+  const focusId = params.get('focus')
+  if (focusId !== null) showRequestedCard(focusId)
   installViewportControls()
   installCardSizeControl()
   installSearch()

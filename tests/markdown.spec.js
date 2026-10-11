@@ -189,7 +189,7 @@ test('a wikilink to a note on the board fits the view to its card', async ({ pag
   const shown = await page.evaluate(() => ({ ...view }))
   expect(shown).toEqual({ x: -60, y: 310, zoom: 1 })
   await expect(page.locator('.canvas-node').nth(1)).toHaveAttribute('data-focused', 'true')
-  await expect(page).toHaveURL(`${ORIGIN}?canvas=board/board.canvas`)
+  await expect(page).toHaveURL(`${ORIGIN}?canvas=board/board.canvas&focus=b`)
 })
 
 test('a wikilink to a note not on the board opens it on its own, looked for beside the linking document', async ({ page }) => {

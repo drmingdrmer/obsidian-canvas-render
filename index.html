@@ -16,6 +16,10 @@
                       image a note names by its file name alone is looked up
     &cards=<size>     draw every card at one size — actual, wide or compact —
                       instead of the size each card stores
+    &at=<x>,<y>,<zoom>
+                      open the board with canvas point (x, y) at the centre of
+                      the window, at this zoom
+    &focus=<id>       open the board fitted to the card with this id
     ?note=<path>      render one markdown file on its own, for reading
     ?raw=<path>       show that file's markdown source instead
 
@@ -24,6 +28,8 @@
   straight out of a GitHub repository, provided the host sends CORS headers.
 
   A note card's title links to ?note=, and the icon beside it to ?raw=.
+  The address bar follows the view as at= or focus=, so a copied link opens on
+  the same view.
 -->
 <html lang="en">
 <head>

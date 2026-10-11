@@ -32,6 +32,8 @@ Any static host serves the repository as-is. On GitHub Pages, **keep the `.nojek
 | `note` | Render a single markdown file on its own, for reading, instead of a canvas |
 | `raw` | Show a single markdown file as plain source |
 | `cards` | Draw every card at one size — `actual`, `wide` or `compact` — instead of the size each card stores |
+| `at` | Open the board on `<x>,<y>,<zoom>`: that canvas point at the centre of the window, at that zoom, where 1 is 100% |
+| `focus` | Open the board fitted to the card with this id, with the focus on it |
 
 `canvas`, `vault`, `note` and `raw` each take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is stripped of script before it is drawn, but the rest of it still appears as this page's own content. The same rule holds for the file each file card names, and for `attachments`, once the vault root is put in front of them. A card whose file leads to any other host shows the refusal instead.
 
@@ -60,6 +62,8 @@ The host has to send `Access-Control-Allow-Origin`, which `raw.githubusercontent
 Dragging the background pans. ⌘/Ctrl + wheel, or a trackpad pinch, zooms. A plain wheel moves the board, and keeps moving it wherever the pointer happens to be — a card that slides under a still pointer partway through cannot take the rest of the gesture over.
 
 Pressing a card puts the focus on it, marked by an accent border. A wheel over that one card then scrolls its content, which is how a card longer than its box is read. Pressing the board takes the focus back, and the wheel moves the board again.
+
+The address bar follows the view, so a copied link opens the board on the same view. A view fitted to one card, by a search or a wikilink, is written as `focus=<card id>`. Any other moved view is written as `at=<x>,<y>,<zoom>`, with the canvas point at the centre of the window, so the link shows the same spot in a window of any size. A view fitted to the whole board writes neither. A link to a card the board no longer holds says so, and shows the whole board.
 
 ## Moving and resizing cards
 

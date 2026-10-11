@@ -62,6 +62,9 @@ const REFUSED_QUERIES = [
   ['cards=toString', 'the cards parameter accepts actual, wide, compact, got toString'],
   ['cards=constructor', 'the cards parameter accepts actual, wide, compact, got constructor'],
   ['cards=__proto__', 'the cards parameter accepts actual, wide, compact, got __proto__'],
+  ['at=1,2', 'the at parameter accepts <x>,<y>,<zoom>, got 1,2'],
+  ['at=1,2,-3', 'the at parameter accepts <x>,<y>,<zoom>, got 1,2,-3'],
+  ['at=,,1', 'the at parameter accepts <x>,<y>,<zoom>, got ,,1'],
 ]
 
 // Runs in the page: 'ok' when the canvas parameter may hold the path, or else
