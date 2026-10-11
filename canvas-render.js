@@ -163,17 +163,16 @@ function installThemeToggles() {
 
 // ------------------------------------------------------------------ markdown
 
-/**
- * One scan that recognises, in priority order: code (fenced or inline), display
- * math, inline math, wikilink. Code wins so that `$x$` inside backticks stays
- * literal, exactly as Obsidian treats it. Inline math must end in a non-space
- * character, so that `between $5 and $10` stays text.
- */
-const INLINE_SCAN =
-  /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)|\$\$([\s\S]+?)\$\$|\$((?:[^$\\\n]|\\.)*?(?:[^\s$\\]|\\.))\$|\[\[([^[\]]+?)\]\]/g
+/** `$$tex$$` on lines of its own. */
+const MATH_BLOCK = /^\$\$([\s\S]+?)\$\$[ \t]*(?:\n|$)/
 
-const MATH_PLACEHOLDER_PREFIX = 'CANVASMATH'
-const MATH_PLACEHOLDER_SUFFIX = 'ENDMATH'
+/** `$$tex$$` inside a line of text. */
+const MATH_DISPLAY = /^\$\$([\s\S]+?)\$\$/
+
+/** `$tex$`. It must end in a non-space character, so that `between $5 and $10` stays text. */
+const MATH_INLINE = /^\$((?:[^$\\\n]|\\.)*?(?:[^\s$\\]|\\.))\$/
+
+const WIKILINK = /^\[\[([^[\]]+?)\]\]/
 
 function escapeHtml(text) {
   return text
@@ -202,41 +201,6 @@ function wikilinkToHtml(body) {
   return `<a class="internal-link is-unresolved" title="${escapeHtml(target.trim())}">${escapeHtml(label)}</a>`
 }
 
-/** True when the match occupies whole lines, so replacing it cannot disturb a paragraph. */
-function ownsItsLines(source, offset, length) {
-  const before = source.slice(0, offset)
-  const after = source.slice(offset + length)
-  const startsLine = before === '' || before.endsWith('\n')
-  const endsLine = after === '' || after.startsWith('\n')
-  return startsLine && endsLine
-}
-
-/** Pulls math out of the source so marked cannot mangle `_`, `*` and `\` inside it. */
-function extractInline(source) {
-  const mathItems = []
-
-  const replaced = source.replace(INLINE_SCAN, (match, code, display, inline, wikilink, offset) => {
-    if (code !== undefined) return code
-
-    if (wikilink !== undefined) return wikilinkToHtml(wikilink)
-
-    const isDisplay = display !== undefined
-    const body = isDisplay ? display : inline
-    mathItems.push({ body: body, display: isDisplay })
-    const index = mathItems.length - 1
-    const placeholder = `${MATH_PLACEHOLDER_PREFIX}${index}${MATH_PLACEHOLDER_SUFFIX}`
-
-    // A block of display math becomes a paragraph of its own, so that whatever
-    // follows cannot absorb it: an immediately following `---` would otherwise
-    // read as a setext underline and turn the formula into a heading.
-    const isBlock = isDisplay && ownsItsLines(source, offset, match.length)
-    if (!isBlock) return placeholder
-    return `\n\n${placeholder}\n\n`
-  })
-
-  return { text: replaced, mathItems: mathItems }
-}
-
 function renderMath(item) {
   return katex.renderToString(item.body, {
     displayMode: item.display,
@@ -246,33 +210,58 @@ function renderMath(item) {
 }
 
 /**
- * Puts the math back. Display math that marked wrapped in its own paragraph is
- * unwrapped first, so the block-level KaTeX output is not nested inside a <p>.
+ * Math and wikilinks are marked's own syntax, so marked keeps them literal in
+ * code, as Obsidian does, and no other markdown rule reaches inside a formula
+ * to take its `_`, `*` or `\` for emphasis or an escape.
+ *
+ * A formula on lines of its own is a block: it ends the paragraph above it,
+ * and a `---` under it is a rule rather than the underline of a heading.
  */
-function restoreMath(html, mathItems) {
-  const paragraphPattern = new RegExp(
-    `<p>\\s*${MATH_PLACEHOLDER_PREFIX}(\\d+)${MATH_PLACEHOLDER_SUFFIX}\\s*</p>`,
-    'g',
-  )
-  const inlinePattern = new RegExp(
-    `${MATH_PLACEHOLDER_PREFIX}(\\d+)${MATH_PLACEHOLDER_SUFFIX}`,
-    'g',
-  )
+const MARKDOWN_EXTENSIONS = [
+  {
+    name: 'mathBlock',
+    level: 'block',
+    start(src) {
+      const match = src.match(/^\$\$/m)
+      return match === null ? undefined : match.index
+    },
+    tokenizer(src) {
+      const match = src.match(MATH_BLOCK)
+      if (match === null) return undefined
+      return { type: 'mathBlock', raw: match[0], body: match[1], display: true }
+    },
+    renderer: token => `${renderMath(token)}\n`,
+  },
+  {
+    name: 'math',
+    level: 'inline',
+    start: src => src.indexOf('$'),
+    tokenizer(src) {
+      const display = src.match(MATH_DISPLAY)
+      if (display !== null) return { type: 'math', raw: display[0], body: display[1], display: true }
 
-  const unwrapped = html.replace(paragraphPattern, (match, index) => {
-    const item = mathItems[Number(index)]
-    if (!item.display) return match
-    return renderMath(item)
-  })
-
-  return unwrapped.replace(inlinePattern, (match, index) => renderMath(mathItems[Number(index)]))
-}
+      const inline = src.match(MATH_INLINE)
+      if (inline === null) return undefined
+      return { type: 'math', raw: inline[0], body: inline[1], display: false }
+    },
+    renderer: token => renderMath(token),
+  },
+  {
+    name: 'wikilink',
+    level: 'inline',
+    start: src => src.indexOf('[['),
+    tokenizer(src) {
+      const match = src.match(WIKILINK)
+      if (match === null) return undefined
+      return { type: 'wikilink', raw: match[0], body: match[1] }
+    },
+    renderer: token => wikilinkToHtml(token.body),
+  },
+]
 
 function renderMarkdown(source) {
   const body = stripFrontmatter(source)
-  const extracted = extractInline(body)
-  const html = marked.parse(extracted.text)
-  return restoreMath(html, extracted.mathItems)
+  return marked.parse(body)
 }
 
 /** Keeps only the section a `#Heading` subpath points at. */
@@ -1495,7 +1484,7 @@ async function showFileView(path, mode) {
 async function main() {
   installThemeToggles()
   // A single newline is a line break, as in Obsidian with "Strict line breaks" off.
-  marked.use({ gfm: true, breaks: true })
+  marked.use({ gfm: true, breaks: true, extensions: MARKDOWN_EXTENSIONS })
 
   const params = new URLSearchParams(window.location.search)
 
