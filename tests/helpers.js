@@ -32,7 +32,9 @@ async function openBoard(page, canvas, notes = {}, query = '') {
     await page.route(`**/board/${notePath}`, handler)
   }
   await page.goto(`${ORIGIN}?canvas=board/board.canvas${query}`)
-  // main() draws the cards and installs every control in one task.
+  // Grid shows its state last in main(), after every card is drawn, so this wait
+  // holds even for a board with no card to count.
+  await expect(page.locator('#grid-snap')).toHaveAttribute('aria-pressed', /^(true|false)$/)
   await expect(page.locator('.canvas-node')).toHaveCount(canvas.nodes.length)
 }
 

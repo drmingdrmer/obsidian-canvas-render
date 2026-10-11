@@ -16,8 +16,6 @@ function canvasPointAt(page, screenX, screenY) {
 test('the opening fit centres the board, at zoom 1 at most', async ({ page }) => {
   for (const [nodes, fitted] of FITS) {
     await openBoard(page, { nodes })
-    // An empty board draws no card to wait for; Grid is the last control main() installs.
-    await expect(page.locator('#grid-snap')).toHaveAttribute('aria-pressed', 'false')
     const result = await page.evaluate(() => ({ ...view }))
     expect.soft(result, `${nodes.length} cards`).toEqual(fitted)
   }
