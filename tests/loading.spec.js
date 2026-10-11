@@ -125,7 +125,7 @@ test('a file card shows Loading… until its note arrives, or why it failed', as
 
   const contents = page.locator('.canvas-node-content')
   await expect(contents.nth(0)).toHaveText('Loading…')
-  await expect(contents.nth(1)).toHaveText('Cannot load gone.md (HTTP 404)')
+  await expect(contents.nth(1)).toHaveText('Cannot read gone.md (HTTP 404)')
   const unreachable = 'Cannot reach board/down.md — the host is unreachable, or sends no CORS header for this page'
   await expect(contents.nth(2)).toHaveText(unreachable)
 

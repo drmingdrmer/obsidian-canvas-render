@@ -40,7 +40,7 @@ File nodes store paths relative to the vault root, so a canvas sitting at the ro
 ?canvas=notes/boards/plan.canvas&vault=notes/
 ```
 
-Omitting it then renders the canvas with every file card reading `Cannot load … (HTTP 404)`.
+Omitting it then renders the canvas with every file card reading `Cannot read … (HTTP 404)`.
 
 ### A canvas on another host
 

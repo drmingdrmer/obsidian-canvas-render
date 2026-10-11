@@ -476,21 +476,24 @@ function placeholderElement(message) {
 /**
  * A host that sends no `Access-Control-Allow-Origin` makes `fetch` reject with
  * a bare `TypeError` before any status code exists — the likeliest way a remote
- * vault fails, and the one an HTTP status cannot describe.
+ * vault fails, and the one an HTTP status cannot describe. A response with an
+ * HTTP error status throws too, naming the file as `name`.
  */
-async function fetchFile(url) {
+async function fetchFile(url, name) {
+  let response = null
   try {
-    return await fetch(url)
+    response = await fetch(url)
   } catch (cause) {
     const reason = 'the host is unreachable, or sends no CORS header for this page'
     throw new Error(`Cannot reach ${url} — ${reason}`, { cause: cause })
   }
+  if (!response.ok) throw new Error(`Cannot read ${name} (HTTP ${response.status})`)
+  return response
 }
 
 async function loadMarkdownInto(contentEl, node) {
   const url = vaultUrl(node.file)
-  const response = await fetchFile(url)
-  if (!response.ok) throw new Error(`Cannot load ${node.file} (HTTP ${response.status})`)
+  const response = await fetchFile(url, node.file)
 
   const source = await response.text()
   const section = sliceSubpath(source, node.subpath)
@@ -1532,8 +1535,7 @@ async function showFileView(path, mode) {
   fileViewEl.hidden = false
 
   const url = encodePath(path)
-  const response = await fetchFile(url)
-  if (!response.ok) throw new Error(`Cannot read ${path} (HTTP ${response.status})`)
+  const response = await fetchFile(url, path)
   const text = await response.text()
 
   if (!isRaw) {
@@ -1568,8 +1570,7 @@ async function main() {
   config.cardSize = preferredCardSize(params)
 
   showStatus(`Loading ${canvasPath} …`)
-  const response = await fetchFile(config.canvasUrl)
-  if (!response.ok) throw new Error(`Cannot read ${canvasPath} (HTTP ${response.status})`)
+  const response = await fetchFile(config.canvasUrl, canvasPath)
 
   const data = await response.json().catch(cause => {
     throw new Error(`Cannot parse ${canvasPath}: ${cause.message}`, { cause: cause })
