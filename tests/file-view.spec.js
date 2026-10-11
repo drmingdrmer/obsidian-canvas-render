@@ -50,3 +50,24 @@ test('a note that cannot be read shows why', async ({ page }) => {
   await expect(status).toHaveText('Cannot read board/none.md (HTTP 404)')
   await expect(status).toBeVisible()
 })
+
+test('a note from an allowed host is stripped of script before it is drawn', async ({ page }) => {
+  const url = 'https://raw.githubusercontent.com/u/r/main/n.md'
+  const note = [
+    '# Title',
+    '<img src="missing.png" onerror="window.scriptRan = true"><script>window.scriptRan = true</script>',
+    '[link](javascript:window.scriptRan=true)',
+  ].join('\n')
+  await serveApp(page)
+  await page.route('https://raw.githubusercontent.com/**', route => route.fulfill({ status: 404 }))
+  await page.route(url, route => route.fulfill({ body: note, headers: { 'access-control-allow-origin': '*' } }))
+  await page.goto(`${ORIGIN}?note=${url}`)
+
+  const body = page.locator('#file-view-body')
+  // A broken image is complete once its error event has fired.
+  await expect(body.locator('img')).toHaveJSProperty('complete', true)
+  const html = await body.locator('.markdown-preview').innerHTML()
+  expect(html).toBe('<h1>Title</h1>\n<p><img src="missing.png"><br><a>link</a></p>\n')
+  const scriptRan = await page.evaluate(() => window.scriptRan)
+  expect(scriptRan).toBeUndefined()
+})

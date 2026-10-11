@@ -136,3 +136,19 @@ test('renderMarkdown keeps code literal and renders math, wikilinks and GFM', as
     expect.soft(result, source).toBe(html)
   }
 })
+
+// Each formula KaTeX draws as HTML and MathML, an SVG among them, and a parse error.
+const FORMULAS = ['$x$', '$$\\sqrt{x^2}$$', '$\\overrightarrow{AB}$', '$\\color{red}{x}$', '$bad{$']
+
+test('markdownElement keeps KaTeX output whole', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  for (const source of FORMULAS) {
+    const result = await page.evaluate(source => {
+      const html = renderMarkdown(source)
+      const unsanitized = document.createElement('div')
+      unsanitized.innerHTML = html
+      return { sanitized: markdownElement(html).innerHTML, unsanitized: unsanitized.innerHTML }
+    }, source)
+    expect.soft(result.sanitized, source).toBe(result.unsanitized)
+  }
+})

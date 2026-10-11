@@ -29,11 +29,19 @@ const CARD_SIZE_NAMES = Object.keys(CARD_SIZES)
 
 /**
  * Hosts besides this page's own origin that a canvas, a vault or a note may be
- * loaded from. Rendered markdown reaches the DOM through `innerHTML` and marked
- * passes raw HTML through untouched, so a host listed here can run script in
- * this page's origin — extending the list is a trust decision.
+ * loaded from. Rendered markdown is stripped of script, but everything else in
+ * it — text, images, links, forms — appears as this page's own content, so
+ * extending the list is a trust decision.
  */
 const REMOTE_HOSTS = ['raw.githubusercontent.com']
+
+/**
+ * marked passes raw HTML through untouched, so rendered markdown goes through
+ * DOMPurify. KaTeX writes every formula in MathML as well as in HTML, and
+ * `semantics` and `annotation` are the two of its elements DOMPurify drops by
+ * default.
+ */
+const SANITIZE_OPTIONS = { ADD_TAGS: ['semantics', 'annotation'], RETURN_DOM_FRAGMENT: true }
 
 const GRID_SIZE = 20
 const MIN_CARD_WIDTH = 120
@@ -420,7 +428,7 @@ function baseName(path) {
 function markdownElement(html) {
   const el = document.createElement('div')
   el.className = 'markdown-preview'
-  el.innerHTML = html
+  el.append(DOMPurify.sanitize(html, SANITIZE_OPTIONS))
   return el
 }
 

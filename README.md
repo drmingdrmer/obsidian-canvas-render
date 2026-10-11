@@ -22,4 +22,4 @@ Block-reference subpaths `#^blockid` render the whole document, and `[[wikilinks
 
 ## License
 
-The application code is licensed under [Apache-2.0](LICENSE). [marked](https://github.com/markedjs/marked) 12.0.2 ([MIT](lib/LICENSE-marked)) and [KaTeX](https://katex.org) 0.16.11 ([MIT](lib/LICENSE-katex)) are vendored under `lib/` rather than loaded from a CDN, so the page works offline. The sample notes under `vault/pages/` are adapted from Wikipedia and stay under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), each naming its source article at the bottom.
+The application code is licensed under [Apache-2.0](LICENSE). [marked](https://github.com/markedjs/marked) 12.0.2 ([MIT](lib/LICENSE-marked)), [KaTeX](https://katex.org) 0.16.11 ([MIT](lib/LICENSE-katex)) and [DOMPurify](https://github.com/cure53/DOMPurify) 3.4.16 ([Apache-2.0](lib/LICENSE-dompurify)) are vendored under `lib/` rather than loaded from a CDN, so the page works offline. The sample notes under `vault/pages/` are adapted from Wikipedia and stay under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), each naming its source article at the bottom.
