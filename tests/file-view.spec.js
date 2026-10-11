@@ -65,10 +65,11 @@ test('a note from an allowed host is stripped of script before it is drawn', asy
   await page.goto(`${ORIGIN}?note=${url}`)
 
   const body = page.locator('#file-view-body')
-  // A broken image is complete once its error event has fired.
-  await expect(body.locator('img')).toHaveJSProperty('complete', true)
+  // The image gives way to its name once its error event has fired, so an
+  // onerror left in by the sanitizer would have run by then.
+  await expect(body.locator('.missing-image')).toHaveText('Cannot load image missing.png')
   const html = await body.locator('.markdown-preview').innerHTML()
-  expect(html).toBe('<h1>Title</h1>\n<p><img src="https://raw.githubusercontent.com/u/r/main/missing.png"><br><a>link</a></p>\n')
+  expect(html).toBe('<h1>Title</h1>\n<p><span class="missing-image">Cannot load image missing.png</span><br><a>link</a></p>\n')
   const scriptRan = await page.evaluate(() => window.scriptRan)
   expect(scriptRan).toBeUndefined()
 })

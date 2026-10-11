@@ -14,7 +14,7 @@ Point it at a canvas with `?canvas=my-board/index.canvas`. That canvas file and 
 ./sync-vault.sh ~/Documents/my-vault my-board/index.canvas
 ```
 
-An image or a link in a note is found relative to the note's own directory, as Obsidian's "Relative path to file" link format writes it. Obsidian also finds an image by its file name alone, wherever it sits in the vault; the page finds such an image only when it sits beside the note.
+An image or a link in a note is found relative to the note's own directory, as Obsidian's "Relative path to file" link format writes it. Obsidian also finds an image by its file name alone, wherever it sits in the vault. A browser cannot list the files in a folder on a web server, so the page looks for such an image in the folder the `attachments` parameter names, and then beside the note. An image it cannot load shows `Cannot load image <path>` where it would have been.
 
 Everything outside `vault/` is the application; `vault/` is one content bundle, and serving a second canvas means adding a second directory of the same shape.
 
@@ -28,11 +28,12 @@ Any static host serves the repository as-is. On GitHub Pages, **keep the `.nojek
 |---|---|
 | `canvas` | The `.canvas` file to render, relative to the page. Defaults to `vault/demo.canvas` |
 | `vault` | The vault root that file nodes resolve against. Defaults to the directory holding the canvas file |
+| `attachments` | The folder, under the vault root, where Obsidian puts new attachments. An image a note names by its file name alone is looked up there first |
 | `note` | Render a single markdown file on its own, for reading, instead of a canvas |
 | `raw` | Show a single markdown file as plain source |
 | `cards` | Draw every card at one size — `actual`, `wide` or `compact` — instead of the size each card stores |
 
-`canvas`, `vault`, `note` and `raw` each take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is stripped of script before it is drawn, but the rest of it still appears as this page's own content. The same rule holds for the file each file card names, once the vault root is put in front of it. A card whose file leads to any other host shows the refusal instead.
+`canvas`, `vault`, `note` and `raw` each take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is stripped of script before it is drawn, but the rest of it still appears as this page's own content. The same rule holds for the file each file card names, and for `attachments`, once the vault root is put in front of them. A card whose file leads to any other host shows the refusal instead.
 
 File nodes store paths relative to the vault root, so a canvas sitting at the root of its own directory needs no `vault` — that is how `?canvas=vault/demo.canvas` works. Name the root explicitly when the canvas sits deeper in the vault, as it does in Obsidian when boards go in `boards/` and notes in `pages/`:
 
@@ -82,4 +83,4 @@ The card size, the grid and the theme are all remembered across visits. Until th
 
 ## Reading a note on its own
 
-A note card's title row carries two links: the title text opens the note rendered for reading (`?note=`), and the `</>` icon beside it opens the same file's markdown source (`?raw=`). The title of any other file card, such as an image or a PDF, opens the file itself, and a link card's title points at its URL.
+A note card's title row carries two links: the title text opens the note rendered for reading (`?note=`), and the `</>` icon beside it opens the same file's markdown source (`?raw=`). The title of any other file card, such as an image or a PDF, opens the file itself, and a link card's title points at its URL. When the board names an attachment folder, both note links carry it, along with the vault root, so that the note finds its images where the board does.

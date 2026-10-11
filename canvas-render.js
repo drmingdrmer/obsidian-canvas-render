@@ -126,7 +126,7 @@ let fittedView = null
 let zoomFloor = MIN_ZOOM
 
 /** Read from the URL query at startup; the card size and the grid follow their controls. */
-const config = { canvasUrl: '', vaultRoot: '', cardSize: 'actual', snapToGrid: false }
+const config = { canvasUrl: '', vaultRoot: '', attachments: null, cardSize: 'actual', snapToGrid: false }
 
 /**
  * The drawn canvas: node data, the element each node was drawn as, the edges on
@@ -416,12 +416,25 @@ function vaultUrl(path) {
   return url
 }
 
+/**
+ * A link into the note views carries the attachment folder, and the vault root
+ * it sits under, so that a note read on its own finds its images where the
+ * board does.
+ */
+function attachmentsQuery() {
+  if (config.attachments === null) return ''
+
+  const vault = encodeURIComponent(config.vaultRoot)
+  const attachments = encodeURIComponent(config.attachments)
+  return `&vault=${vault}&attachments=${attachments}`
+}
+
 function noteHref(path) {
-  return `?note=${encodeURIComponent(path)}`
+  return `?note=${encodeURIComponent(path)}${attachmentsQuery()}`
 }
 
 function rawHref(path) {
-  return `?raw=${encodeURIComponent(path)}`
+  return `?raw=${encodeURIComponent(path)}${attachmentsQuery()}`
 }
 
 function fileExtension(path) {
@@ -446,15 +459,57 @@ function baseName(path) {
  */
 function resolveReferences(fragment, documentUrl) {
   const baseUrl = new URL(documentUrl, window.location.href)
-  for (const el of fragment.querySelectorAll('img[src], a[href]')) {
-    const attribute = el.tagName === 'IMG' ? 'src' : 'href'
-    const reference = el.getAttribute(attribute)
+  for (const link of fragment.querySelectorAll('a[href]')) {
+    const reference = link.getAttribute('href')
     if (reference.startsWith('#')) continue
 
     const resolved = URL.parse(reference, baseUrl)
     if (resolved === null) continue
-    el.setAttribute(attribute, resolved.href)
+    link.setAttribute('href', resolved.href)
   }
+  for (const image of fragment.querySelectorAll('img[src]')) loadImage(image, baseUrl)
+}
+
+/**
+ * The URLs an image may load from, in the order they are tried. Obsidian links
+ * a file by its name alone when no other file in the vault has that name, and
+ * finds it wherever it sits. A browser cannot search a vault, so such a name is
+ * tried first in the attachment folder, when the `attachments` parameter names
+ * one, and then beside the document.
+ */
+function imageUrls(reference, baseUrl) {
+  const resolved = URL.parse(reference, baseUrl)
+  const besideDocument = resolved === null ? reference : resolved.href
+  const isNameAlone = !reference.includes('/') && URL.parse(reference) === null
+  if (config.attachments === null || !isNameAlone) return [besideDocument]
+
+  const folderUrl = new URL(encodePath(config.vaultRoot + config.attachments), window.location.href)
+  const inAttachments = new URL(reference, folderUrl)
+  return [inAttachments.href, besideDocument]
+}
+
+/**
+ * Loads an image from the first of its URLs that answers. An image that none of
+ * them loads names itself instead: with no alt text, a broken image collapses
+ * to nothing, and the note reads on as if nothing were missing.
+ */
+function loadImage(image, baseUrl) {
+  const reference = image.getAttribute('src')
+  const urls = imageUrls(reference, baseUrl)
+  let tried = 0
+  image.addEventListener('error', () => {
+    tried += 1
+    if (tried < urls.length) {
+      image.src = urls[tried]
+      return
+    }
+
+    const missingEl = document.createElement('span')
+    missingEl.className = 'missing-image'
+    missingEl.textContent = `Cannot load image ${reference}`
+    image.replaceWith(missingEl)
+  })
+  image.src = urls[0]
 }
 
 function markdownElement(html, documentUrl) {
@@ -1562,15 +1617,31 @@ function directoryOf(path) {
  * File nodes store paths relative to the vault root. `vault` names that root;
  * left out, it is the directory holding the canvas file — which is where the
  * root sits whenever a canvas is deployed together with the notes it embeds.
+ * The note views default to the note's own directory the same way.
  */
-function resolveVaultRoot(params, canvasPath) {
+function resolveVaultRoot(params, documentPath) {
   const explicitRoot = params.get('vault')
-  if (explicitRoot === null) return directoryOf(canvasPath)
+  if (explicitRoot === null) return directoryOf(documentPath)
 
   assertAllowedHost(explicitRoot, 'vault')
   if (explicitRoot === '') return ''
   if (explicitRoot.endsWith('/')) return explicitRoot
   return `${explicitRoot}/`
+}
+
+/**
+ * The folder Obsidian puts new attachments in, under the vault root, as its
+ * "Default location for new attachments" setting names it; null when the
+ * `attachments` parameter names none.
+ */
+function resolveAttachments(params) {
+  const folder = params.get('attachments')
+  if (folder === null) return null
+
+  assertAllowedHost(config.vaultRoot + folder, 'attachments')
+  if (folder === '') return ''
+  if (folder.endsWith('/')) return folder
+  return `${folder}/`
 }
 
 /**
@@ -1584,7 +1655,6 @@ function resolveVaultRoot(params, canvasPath) {
  * the response header claims.
  */
 async function showFileView(path, mode) {
-  assertAllowedHost(path, mode)
   const isRaw = mode === 'raw'
 
   document.body.dataset.mode = 'file'
@@ -1619,6 +1689,9 @@ async function main() {
   for (const mode of ['note', 'raw']) {
     const path = params.get(mode)
     if (path === null) continue
+    assertAllowedHost(path, mode)
+    config.vaultRoot = resolveVaultRoot(params, path)
+    config.attachments = resolveAttachments(params)
     await showFileView(path, mode)
     return
   }
@@ -1627,6 +1700,7 @@ async function main() {
   assertAllowedHost(canvasPath, 'canvas')
   config.canvasUrl = encodePath(canvasPath)
   config.vaultRoot = resolveVaultRoot(params, canvasPath)
+  config.attachments = resolveAttachments(params)
   config.cardSize = preferredCardSize(params)
 
   showStatus(`Loading ${canvasPath} …`)

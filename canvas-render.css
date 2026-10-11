@@ -451,6 +451,17 @@ body {
   max-width: 100%;
 }
 
+/* An image that cannot be loaded, named where it would have been. */
+.markdown-preview .missing-image {
+  display: inline-block;
+  padding: 0.2em 0.6em;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-faint);
+  font-size: 0.88em;
+  word-break: break-all;
+}
+
 .markdown-preview a {
   color: var(--text-accent);
   text-decoration: none;

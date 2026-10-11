@@ -179,3 +179,53 @@ test('markdown finds its images and links beside the note or canvas it is writte
   await expect(filePreview.locator('img')).toHaveJSProperty('complete', true)
   expect(await filePreview.evaluate(readReferences)).toEqual(noteReferences)
 })
+
+// A note in pages/ that names one image by its file name alone, kept in the
+// attachment folder assets/.
+const ATTACHED_NOTE = { id: 'n', type: 'file', file: 'pages/n.md', x: 0, y: 0, width: 300, height: 200 }
+
+test('an image named by its file name alone is looked up in the attachment folder, then beside the note', async ({ page, expectedErrors }) => {
+  expectedErrors.push(`HTTP 404 ${ORIGIN}board/assets/beside.svg`)
+  const figure = route => route.fulfill({ body: FIGURE, contentType: 'image/svg+xml' })
+  const notes = { 'pages/n.md': '![](attached.svg) ![](beside.svg)', 'assets/attached.svg': figure, 'pages/beside.svg': figure }
+  await openBoard(page, { nodes: [ATTACHED_NOTE] }, notes, '&attachments=assets')
+
+  const preview = page.locator('.markdown-preview')
+  await expect(preview.locator('img').nth(0)).toHaveJSProperty('naturalWidth', 40)
+  await expect(preview.locator('img').nth(1)).toHaveJSProperty('naturalWidth', 40)
+  const references = await preview.evaluate(readReferences)
+  expect(references).toEqual({
+    images: [
+      { src: `${ORIGIN}board/assets/attached.svg`, width: 40, height: 30 },
+      { src: `${ORIGIN}board/pages/beside.svg`, width: 40, height: 30 },
+    ],
+    links: [],
+  })
+})
+
+test('an image that cannot be loaded is named where it would have been', async ({ page, expectedErrors }) => {
+  expectedErrors.push(
+    `HTTP 404 ${ORIGIN}board/assets/gone.svg`,
+    `HTTP 404 ${ORIGIN}board/pages/gone.svg`,
+    `HTTP 404 ${ORIGIN}board/pages/sub/gone.svg`,
+  )
+  await openBoard(page, { nodes: [ATTACHED_NOTE] }, { 'pages/n.md': '![](gone.svg) ![](sub/gone.svg)' }, '&attachments=assets')
+
+  const preview = page.locator('.markdown-preview')
+  await expect(preview.locator('.missing-image')).toHaveText(['Cannot load image gone.svg', 'Cannot load image sub/gone.svg'])
+  await expect(preview.locator('img')).toHaveCount(0)
+})
+
+test('a note link carries the attachment folder, so the note view finds the same images', async ({ page }) => {
+  const figure = route => route.fulfill({ body: FIGURE, contentType: 'image/svg+xml' })
+  await openBoard(page, { nodes: [ATTACHED_NOTE] }, { 'pages/n.md': '![](attached.svg)', 'assets/attached.svg': figure }, '&attachments=assets')
+  const hrefs = await page.locator('.canvas-node-title-link').evaluateAll(els => els.map(el => el.getAttribute('href')))
+  const forwarded = '&vault=board%2F&attachments=assets%2F'
+  expect(hrefs).toEqual([`?note=board%2Fpages%2Fn.md${forwarded}`, `?raw=board%2Fpages%2Fn.md${forwarded}`])
+
+  await page.goto(`${ORIGIN}${hrefs[0]}`)
+  const image = page.locator('#file-view-body img')
+  await expect(image).toHaveJSProperty('naturalWidth', 40)
+  await expect(image).toHaveAttribute('src', `${ORIGIN}board/assets/attached.svg`)
+  await expect(page.locator('#file-view-toggle')).toHaveAttribute('href', `?raw=board%2Fpages%2Fn.md${forwarded}`)
+})

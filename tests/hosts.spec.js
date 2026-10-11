@@ -39,6 +39,14 @@ const VAULT_ROOTS = [
   ['vault=', 'x/y.canvas', ''],
 ]
 
+// [query, resolveAttachments(new URLSearchParams(query))]
+const ATTACHMENT_FOLDERS = [
+  ['', null],
+  ['attachments=assets', 'assets/'],
+  ['attachments=assets/', 'assets/'],
+  ['attachments=', ''],
+]
+
 function refusal(parameter, path) {
   return `the ${parameter} parameter accepts a same-origin path or an https URL on raw.githubusercontent.com, got ${path}`
 }
@@ -48,6 +56,8 @@ const REFUSED_QUERIES = [
   ['canvas=https://evil.example/x.canvas', refusal('canvas', 'https://evil.example/x.canvas')],
   ['raw=https://evil.example/n.md', refusal('raw', 'https://evil.example/n.md')],
   ['canvas=board/board.canvas&vault=https://evil.example/', refusal('vault', 'https://evil.example/')],
+  ['canvas=board/board.canvas&vault=&attachments=https://evil.example/', refusal('attachments', 'https://evil.example/')],
+  ['note=board/n.md&vault=&attachments=https://evil.example/', refusal('attachments', 'https://evil.example/')],
   ['cards=huge', 'the cards parameter accepts actual, wide, compact, got huge'],
   ['cards=toString', 'the cards parameter accepts actual, wide, compact, got toString'],
   ['cards=constructor', 'the cards parameter accepts actual, wide, compact, got constructor'],
@@ -95,6 +105,14 @@ test('resolveVaultRoot defaults to the canvas directory and ends a root with a s
     const args = [query, canvasPath]
     const result = await page.evaluate(([query, canvasPath]) => resolveVaultRoot(new URLSearchParams(query), canvasPath), args)
     expect.soft(result, `${query} ${canvasPath}`).toBe(root)
+  }
+})
+
+test('resolveAttachments ends a folder with a slash, and is null with no parameter', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
+  for (const [query, folder] of ATTACHMENT_FOLDERS) {
+    const result = await page.evaluate(query => resolveAttachments(new URLSearchParams(query)), query)
+    expect.soft(result, query).toBe(folder)
   }
 })
 
