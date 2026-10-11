@@ -405,7 +405,9 @@ function rawHref(path) {
 
 function fileExtension(path) {
   const dotIndex = path.lastIndexOf('.')
-  if (dotIndex < 0) return ''
+  const slashIndex = path.lastIndexOf('/')
+  const dotInName = dotIndex > slashIndex
+  if (!dotInName) return ''
   return path.slice(dotIndex + 1).toLowerCase()
 }
 
