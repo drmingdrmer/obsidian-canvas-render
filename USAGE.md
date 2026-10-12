@@ -14,7 +14,11 @@ Point it at a canvas with `?canvas=my-board/index.canvas`. That canvas file and 
 ./sync-vault.sh ~/Documents/my-vault my-board/index.canvas
 ```
 
-An image or a link in a note is found relative to the note's own directory, as Obsidian's "Relative path to file" link format writes it. Obsidian also finds an image by its file name alone, wherever it sits in the vault. A browser cannot list the files in a folder on a web server, so the page looks for such an image in the folder the `attachments` parameter names, and then beside the note. An image it cannot load shows `Cannot load image <path>` where it would have been.
+An image or a link in a note is found relative to the note's own directory, as Obsidian's "Relative path to file" link format writes it. Obsidian also finds an image by its file name alone, wherever it sits in the vault. A browser cannot list the files in a folder on a web server, so the page looks for such an image in the folder the `attachments` parameter names, and then beside the note. An image it cannot load shows `Cannot load image <path>` where it would have been. `sync-vault.sh` takes the same folder as a third argument, and copies such an image from that folder, or else from beside the note:
+
+```bash
+./sync-vault.sh ~/Documents/my-vault my-board/index.canvas assets
+```
 
 Everything outside `vault/` is the application; `vault/` is one content bundle, and serving a second canvas means adding a second directory of the same shape.
 

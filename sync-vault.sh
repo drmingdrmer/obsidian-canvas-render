@@ -4,7 +4,7 @@
 # page treats as the vault root.
 # Re-run after editing the canvas in Obsidian.
 #
-#   ./sync-vault.sh <source-vault> [canvas-file]
+#   ./sync-vault.sh <source-vault> [canvas-file] [attachments]
 #
 # Example:
 #   ./sync-vault.sh ~/Documents/my-vault vault/demo.canvas
@@ -12,16 +12,18 @@ set -e
 cd "$(dirname "$0")"
 
 if [ $# -lt 1 ]; then
-    echo "usage: $(basename "$0") <source-vault> [canvas-file]" >&2
+    echo "usage: $(basename "$0") <source-vault> [canvas-file] [attachments]" >&2
     echo "  source-vault  root of the Obsidian vault to copy notes out of" >&2
     echo "  canvas-file   canvas to read references from (default: vault/demo.canvas)" >&2
+    echo "  attachments   folder in the vault where Obsidian puts new attachments; an" >&2
+    echo "                image named by its file name alone is looked for there first" >&2
     exit 2
 fi
 
 SOURCE_VAULT="$1"
 CANVAS_FILE="${2:-vault/demo.canvas}"
 
-python3 - "$SOURCE_VAULT" "$CANVAS_FILE" <<'PYTHON'
+python3 - "$SOURCE_VAULT" "$CANVAS_FILE" "${@:3}" <<'PYTHON'
 import json
 import os
 import re
@@ -30,6 +32,9 @@ import sys
 from urllib.parse import unquote
 
 source_vault, canvas_file = sys.argv[1], sys.argv[2]
+# The folder, under the vault root, where Obsidian puts new attachments; None
+# when no third argument names one.
+attachments = sys.argv[3] if len(sys.argv) > 3 else None
 
 with open(canvas_file, encoding='utf-8') as handle:
     canvas = json.load(handle)
@@ -60,8 +65,12 @@ IMAGE_REFERENCE = re.compile(
 NOT_A_VAULT_PATH = re.compile(r'^(?:[a-z][a-z0-9+.-]*:|/|#)', re.IGNORECASE)
 
 
-def embedded_images(note_path, source):
-    """The vault paths of the images a note embeds, each resolved against the note's directory, as the page does."""
+def embedded_images(note_path, source, attachments):
+    """For each image a note embeds, the vault paths the page tries for it, in order.
+
+    Every path is resolved against the note's directory. A file name alone is
+    tried in the attachment folder first, when there is one.
+    """
     with open(source, encoding='utf-8') as handle:
         text = handle.read()
 
@@ -71,8 +80,17 @@ def embedded_images(note_path, source):
             continue
 
         path = unquote(references[0].split('#')[0].split('?')[0])
-        yield os.path.normpath(os.path.join(os.path.dirname(note_path), path))
+        beside_note = os.path.normpath(os.path.join(os.path.dirname(note_path), path))
+        is_name_alone = '/' not in references[0]
+        if attachments is None or not is_name_alone:
+            yield [beside_note]
+            continue
 
+        yield [os.path.normpath(os.path.join(attachments, path)), beside_note]
+
+
+if attachments is not None and not os.path.isdir(inside(source_root, attachments)):
+    raise SystemExit(f'not a folder in vault: {attachments}')
 
 # Every path is checked before any file is copied, so a bad one leaves the
 # bundle as it was. A file named twice is copied once.
@@ -91,14 +109,17 @@ for node in canvas.get('nodes', []):
     if not relative_path.lower().endswith('.md'):
         continue
 
-    # Obsidian also finds an image by its file name alone, which a browser
-    # cannot: such an image is left out, as one that does not exist.
-    for image_path in embedded_images(relative_path, source):
-        image_source = inside(source_root, image_path)
-        if not os.path.isfile(image_source):
-            print(f'skipped {image_path}, embedded in {relative_path}: not found in vault', file=sys.stderr)
+    # Obsidian finds an image by its file name alone wherever it sits, which a
+    # browser cannot: one at none of the paths the page tries is left out.
+    for image_paths in embedded_images(relative_path, source, attachments):
+        found = [path for path in image_paths if os.path.isfile(inside(source_root, path))]
+        if not found:
+            tried = ' or '.join(image_paths)
+            print(f'skipped {tried}, embedded in {relative_path}: not found in vault', file=sys.stderr)
             continue
 
+        image_path = found[0]
+        image_source = inside(source_root, image_path)
         image_target = inside(bundle_root, image_path)
         copies[image_path] = (image_source, image_target)
 

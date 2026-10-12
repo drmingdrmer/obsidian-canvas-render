@@ -29,12 +29,13 @@ function readTree(root, directory = '') {
   return tree
 }
 
-// Runs sync-vault.sh from root/vault into root/bundle, for a canvas of file nodes.
-function syncVault(root, files) {
+// Runs sync-vault.sh from root/vault into root/bundle, for a canvas of file
+// nodes, with args after the canvas file.
+function syncVault(root, files, ...args) {
   const nodes = files.map((file, i) => ({ id: `n${i}`, type: 'file', file, x: 0, y: 0, width: 100, height: 100 }))
   writeTree(root, { 'bundle/board.canvas': JSON.stringify({ nodes }) })
   const canvasFile = path.join(root, 'bundle', 'board.canvas')
-  return spawnSync('bash', [SCRIPT, path.join(root, 'vault'), canvasFile], { encoding: 'utf8' })
+  return spawnSync('bash', [SCRIPT, path.join(root, 'vault'), canvasFile, ...args], { encoding: 'utf8' })
 }
 
 test('sync-vault.sh copies each file a canvas names into the canvas directory', async ({}, testInfo) => {
@@ -72,6 +73,36 @@ test('sync-vault.sh also copies the images a note embeds, found beside the note'
   const tree = readTree(path.join(root, 'bundle'))
   delete tree['board.canvas']
   expect(tree).toEqual({ 'pages/n.md': note, ...images })
+})
+
+test('sync-vault.sh looks for an image named by its file name alone in the attachment folder, then beside the note', async ({}, testInfo) => {
+  const root = fs.realpathSync(testInfo.outputPath())
+  const note = '![a](fig.svg) ![b](local.svg) ![c](both.svg) ![d](sub/deep.svg) ![e](gone.svg)'
+  writeTree(path.join(root, 'vault'), {
+    'pages/n.md': note,
+    'assets/fig.svg': 'fig in the attachment folder',
+    'pages/local.svg': 'local beside the note',
+    'assets/both.svg': 'both in the attachment folder',
+    'pages/both.svg': 'both beside the note',
+    'assets/sub/deep.svg': 'deep under the attachment folder',
+  })
+  const result = syncVault(root, ['pages/n.md'], 'assets')
+
+  expect(result.stderr).toBe([
+    'skipped pages/sub/deep.svg, embedded in pages/n.md: not found in vault',
+    'skipped assets/gone.svg or pages/gone.svg, embedded in pages/n.md: not found in vault',
+    '',
+  ].join('\n'))
+  expect(result.stdout).toBe('pages/n.md\nassets/fig.svg\npages/local.svg\nassets/both.svg\n')
+  expect(result.status).toBe(0)
+  const tree = readTree(path.join(root, 'bundle'))
+  delete tree['board.canvas']
+  expect(tree).toEqual({
+    'pages/n.md': note,
+    'assets/fig.svg': 'fig in the attachment folder',
+    'pages/local.svg': 'local beside the note',
+    'assets/both.svg': 'both in the attachment folder',
+  })
 })
 
 // The vault holds ok.md, out/n.md and escape.md, which embeds a file outside
@@ -112,5 +143,28 @@ test('sync-vault.sh refuses a path that leaves the vault or the bundle, and copi
     expect.soft(result.stdout, file).toBe('')
     expect.soft(result.status, file).toBe(1)
     expect.soft(tree, file).toEqual(LAYOUT)
+  }
+})
+
+// [attachment folder, the error sync-vault.sh stops with, given the root]
+const REFUSED_ATTACHMENTS = [
+  ['../secret', root => `outside ${root}/vault: ../secret`],
+  ['missing', () => 'not a folder in vault: missing'],
+]
+
+test('sync-vault.sh refuses an attachment folder the vault does not hold, and copies nothing', async ({}, testInfo) => {
+  for (const [index, [attachments, message]] of REFUSED_ATTACHMENTS.entries()) {
+    const caseDir = testInfo.outputPath(String(index))
+    fs.mkdirSync(caseDir)
+    const root = fs.realpathSync(caseDir)
+    writeTree(root, LAYOUT)
+    const result = syncVault(root, ['ok.md'], attachments)
+    const tree = readTree(root)
+    delete tree['bundle/board.canvas']
+
+    expect.soft(result.stderr, attachments).toBe(`${message(root)}\n`)
+    expect.soft(result.stdout, attachments).toBe('')
+    expect.soft(result.status, attachments).toBe(1)
+    expect.soft(tree, attachments).toEqual(LAYOUT)
   }
 })
