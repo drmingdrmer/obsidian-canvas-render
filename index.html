@@ -30,6 +30,9 @@
   A note card's title links to ?note=, and the icon beside it to ?raw=.
   The address bar follows the view as at= or focus=, so a copied link opens on
   the same view.
+
+  canvas-render.js is an ES module. Its mount() draws a board inside an element
+  of any page, with these parameters given to it; see USAGE.md.
 -->
 <html lang="en">
 <head>
@@ -38,63 +41,18 @@
 <title>Canvas Render</title>
 <link rel="icon" href="data:,">
 
-<link rel="stylesheet" href="lib/katex/katex.min.css">
-<link rel="stylesheet" href="canvas-render.css">
+<style>
+  /* The board fills the window. canvas-render.css styles only what mount() draws. */
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+</style>
 </head>
 <body>
 
-<div class="canvas-wrapper" id="wrapper">
-  <div class="canvas-background" id="background"></div>
+<script type="module">
+  import { mount } from './canvas-render.js'
 
-  <div class="canvas" id="canvas">
-    <svg class="canvas-edges" id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
-  </div>
-
-  <div class="canvas-controls">
-    <div class="canvas-control-group canvas-search">
-      <input class="canvas-search-input" id="search" type="search" placeholder="Search cards"
-        title="Find a card by its name or text" aria-label="Search cards" autocomplete="off" spellcheck="false">
-      <div class="canvas-search-results" id="search-results" hidden></div>
-    </div>
-
-    <span class="canvas-control-divider"></span>
-    <span class="canvas-control-group">
-      <button class="canvas-control-item" id="zoom-out" title="Zoom out">&minus;</button>
-      <button class="canvas-control-item" id="zoom-reset" title="Reset to 100%">100%</button>
-      <button class="canvas-control-item" id="zoom-in" title="Zoom in">&plus;</button>
-      <button class="canvas-control-item" id="zoom-fit" title="Fit to content">Fit</button>
-    </span>
-
-    <span class="canvas-control-divider"></span>
-    <span class="canvas-control-group">
-      <button class="canvas-control-item" data-card-size="actual" title="Cards at the size the file stores">Actual</button>
-      <button class="canvas-control-item" data-card-size="wide" title="Every card at one wide size">Wide</button>
-      <button class="canvas-control-item" data-card-size="compact" title="Every card at one compact size">Compact</button>
-    </span>
-
-    <span class="canvas-control-divider"></span>
-    <button class="canvas-control-item" id="grid-snap" title="Land a dragged card on the grid">Grid</button>
-
-    <span class="canvas-control-divider"></span>
-    <button class="canvas-control-item theme-toggle" title="Toggle light and dark theme">☾</button>
-  </div>
-</div>
-
-<div class="file-view" id="file-view" hidden>
-  <div class="file-view-header">
-    <span class="file-view-path" id="file-view-path"></span>
-    <a class="file-view-toggle" id="file-view-toggle"></a>
-    <button class="file-view-theme theme-toggle" title="Toggle light and dark theme">☾</button>
-  </div>
-  <div class="file-view-body" id="file-view-body"></div>
-</div>
-
-<div class="canvas-status" id="status" hidden></div>
-
-<script src="lib/marked.min.js"></script>
-<script src="lib/katex/katex.min.js"></script>
-<script src="lib/purify.min.js"></script>
-<script src="canvas-render.js"></script>
+  mount(document.body).catch(error => console.error(error))
+</script>
 
 </body>
 </html>

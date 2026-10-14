@@ -61,6 +61,30 @@ The vault root still defaults to the directory holding the canvas, so notes stor
 
 The host has to send `Access-Control-Allow-Origin`, which `raw.githubusercontent.com` does. Without that header the browser blocks the fetch before any status code exists, and the page reports the block instead of an HTTP error.
 
+## Showing a board inside another page
+
+`canvas-render.js` is an ES module. Its `mount` draws a board inside an element of any page:
+
+```html
+<div id="board" style="height: 70vh"></div>
+<script type="module">
+  import { mount } from '/obsidian-canvas-render/canvas-render.js'
+
+  mount(document.getElementById('board'), { canvas: 'boards/plan.canvas', attachments: 'assets' })
+</script>
+```
+
+- The second argument takes the URL parameters above, by the same names. A relative path in it is relative to the page's address.
+- The board is drawn in a shadow root, so the page's styles do not reach the board, and the board's styles do not reach the page. The page sets the element's height; without one, the board is 70% as tall as the window.
+- A plain wheel over the board scrolls the page. Ctrl or ⌘ with the wheel, or a trackpad pinch, zooms the board, and a drag on its background pans it. The wheel scrolls a card only after a press on the card puts the focus on it.
+- The board never writes `at` or `focus` into the page's address. To open it on a view, copy those from the renderer's own page, and add them to the second argument.
+- A note link opens the renderer's own page, `index.html` beside `canvas-render.js`. That page reads the note from its own site, so serve the renderer from the same site as the page.
+- `mount` loads `marked`, KaTeX and DOMPurify from `lib/` beside the module. A page that has loaded one of them already lends its copy to the board.
+- `mount` also adds KaTeX's stylesheet to the page's `<head>`, because a browser loads fonts only from the page's own stylesheets. That stylesheet styles any KaTeX formula of the page too.
+- A page shows one board. A second `mount` fails.
+
+`index.html` calls `mount(document.body)`. Without the second argument, the board reads the URL parameters from the page's address, and keeps its view there.
+
 ## Moving around the board
 
 Dragging the background pans. ⌘/Ctrl + wheel, or a trackpad pinch, zooms. A plain wheel moves the board, and keeps moving it wherever the pointer happens to be — a card that slides under a still pointer partway through cannot take the rest of the gesture over.

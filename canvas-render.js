@@ -1,12 +1,31 @@
-'use strict'
-
 /**
  * Renders a JSON Canvas file (https://jsoncanvas.org) the way Obsidian draws it:
  * nodes are absolutely positioned DOM elements, edges are one SVG layer beneath
  * them, and the whole thing sits in a pan/zoom viewport over a dot grid.
+ *
+ * An ES module: `mount` draws the board inside an element of any page.
  */
 
 // ---------------------------------------------------------------- constants
+
+/** The folder this module is served from, which holds its stylesheets and the renderer's own page. */
+const APP_URL = new URL('./', import.meta.url)
+
+const KATEX_STYLESHEET = 'lib/katex/katex.min.css'
+
+/** The stylesheets a board's shadow root links, relative to this module; the board's own come last, to win. */
+const BOARD_STYLESHEETS = [KATEX_STYLESHEET, 'canvas-render.css']
+
+/**
+ * The libraries the board calls, as the global each one's script defines and
+ * the script's path relative to this module. A page that has loaded one
+ * already lends it to the board.
+ */
+const LIBRARIES = [
+  ['marked', 'lib/marked.min.js'],
+  ['katex', 'lib/katex/katex.min.js'],
+  ['DOMPurify', 'lib/purify.min.js'],
+]
 
 const DEFAULT_CANVAS_PATH = 'vault/demo.canvas'
 const THEME_STORAGE_KEY = 'canvas-render-theme'
@@ -104,26 +123,84 @@ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
 // ------------------------------------------------------------------ elements
 
-const wrapperEl = document.getElementById('wrapper')
-const backgroundEl = document.getElementById('background')
-const canvasEl = document.getElementById('canvas')
-const edgesEl = document.getElementById('edges')
-const statusEl = document.getElementById('status')
-const zoomInEl = document.getElementById('zoom-in')
-const zoomOutEl = document.getElementById('zoom-out')
-const zoomResetEl = document.getElementById('zoom-reset')
-const zoomFitEl = document.getElementById('zoom-fit')
-const cardSizeEls = document.querySelectorAll('[data-card-size]')
-const gridSnapEl = document.getElementById('grid-snap')
-const searchEl = document.getElementById('search')
-const searchResultsEl = document.getElementById('search-results')
-const themeToggleEls = document.querySelectorAll('.theme-toggle')
-const fileViewEl = document.getElementById('file-view')
-const fileViewPathEl = document.getElementById('file-view-path')
-const fileViewToggleEl = document.getElementById('file-view-toggle')
-const fileViewBodyEl = document.getElementById('file-view-body')
+/** The board's elements, built once; `mount` moves them into the shadow root it attaches. */
+const BOARD_MARKUP = `
+<div class="canvas-wrapper" id="wrapper">
+  <div class="canvas-background" id="background"></div>
+
+  <div class="canvas" id="canvas">
+    <svg class="canvas-edges" id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div class="canvas-controls">
+    <div class="canvas-control-group canvas-search">
+      <input class="canvas-search-input" id="search" type="search" placeholder="Search cards"
+        title="Find a card by its name or text" aria-label="Search cards" autocomplete="off" spellcheck="false">
+      <div class="canvas-search-results" id="search-results" hidden></div>
+    </div>
+
+    <span class="canvas-control-divider"></span>
+    <span class="canvas-control-group">
+      <button class="canvas-control-item" id="zoom-out" title="Zoom out">&minus;</button>
+      <button class="canvas-control-item" id="zoom-reset" title="Reset to 100%">100%</button>
+      <button class="canvas-control-item" id="zoom-in" title="Zoom in">&plus;</button>
+      <button class="canvas-control-item" id="zoom-fit" title="Fit to content">Fit</button>
+    </span>
+
+    <span class="canvas-control-divider"></span>
+    <span class="canvas-control-group">
+      <button class="canvas-control-item" data-card-size="actual" title="Cards at the size the file stores">Actual</button>
+      <button class="canvas-control-item" data-card-size="wide" title="Every card at one wide size">Wide</button>
+      <button class="canvas-control-item" data-card-size="compact" title="Every card at one compact size">Compact</button>
+    </span>
+
+    <span class="canvas-control-divider"></span>
+    <button class="canvas-control-item" id="grid-snap" title="Land a dragged card on the grid">Grid</button>
+
+    <span class="canvas-control-divider"></span>
+    <button class="canvas-control-item theme-toggle" title="Toggle light and dark theme">☾</button>
+  </div>
+</div>
+
+<div class="file-view" id="file-view" hidden>
+  <div class="file-view-header">
+    <span class="file-view-path" id="file-view-path"></span>
+    <a class="file-view-toggle" id="file-view-toggle"></a>
+    <button class="file-view-theme theme-toggle" title="Toggle light and dark theme">☾</button>
+  </div>
+  <div class="file-view-body" id="file-view-body"></div>
+</div>
+
+<div class="canvas-status" id="status" hidden></div>
+`
+
+const boardFragment = document.createRange().createContextualFragment(BOARD_MARKUP)
+const wrapperEl = boardFragment.getElementById('wrapper')
+const backgroundEl = boardFragment.getElementById('background')
+const canvasEl = boardFragment.getElementById('canvas')
+const edgesEl = boardFragment.getElementById('edges')
+const statusEl = boardFragment.getElementById('status')
+const zoomInEl = boardFragment.getElementById('zoom-in')
+const zoomOutEl = boardFragment.getElementById('zoom-out')
+const zoomResetEl = boardFragment.getElementById('zoom-reset')
+const zoomFitEl = boardFragment.getElementById('zoom-fit')
+const cardSizeEls = boardFragment.querySelectorAll('[data-card-size]')
+const gridSnapEl = boardFragment.getElementById('grid-snap')
+const searchEl = boardFragment.getElementById('search')
+const searchResultsEl = boardFragment.getElementById('search-results')
+const themeToggleEls = boardFragment.querySelectorAll('.theme-toggle')
+const fileViewEl = boardFragment.getElementById('file-view')
+const fileViewPathEl = boardFragment.getElementById('file-view-path')
+const fileViewToggleEl = boardFragment.getElementById('file-view-toggle')
+const fileViewBodyEl = boardFragment.getElementById('file-view-body')
 
 // --------------------------------------------------------------------- state
+
+/** The element `mount` drew the board in, null until then; it carries the theme and the view mode. */
+let hostEl = null
+
+/** The board's own marked, made by `main`, so that a page's own `marked` keeps its options. */
+let markdownParser = null
 
 /** Screen position of canvas origin, plus the current scale factor. */
 const view = { x: 0, y: 0, zoom: 1 }
@@ -137,8 +214,12 @@ let fittedView = null
 /** The zoom controls stop at 10%, or lower when the last fit needed less to show the whole board. */
 let zoomFloor = MIN_ZOOM
 
-/** Read from the URL query at startup; the card size and the grid follow their controls. */
-const config = { canvasPath: '', vaultRoot: '', attachments: null, cardSize: 'actual', snapToGrid: false }
+/**
+ * Read from the parameters at startup; the card size and the grid follow their
+ * controls. `ownsPage` is false for a board mounted in another page, which
+ * leaves that page's address and title alone.
+ */
+const config = { canvasPath: '', vaultRoot: '', attachments: null, cardSize: 'actual', snapToGrid: false, ownsPage: true }
 
 /**
  * The drawn canvas: node data, the element each node was drawn as, the edges on
@@ -159,7 +240,7 @@ function preferredTheme() {
 }
 
 function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme
+  hostEl.dataset.theme = theme
   const glyph = theme === 'dark' ? '☀' : '☾'
   for (const toggleEl of themeToggleEls) toggleEl.textContent = glyph
 }
@@ -169,7 +250,7 @@ function installThemeToggles() {
   applyTheme(preferredTheme())
   for (const toggleEl of themeToggleEls) {
     toggleEl.addEventListener('click', () => {
-      const isDark = document.documentElement.dataset.theme === 'dark'
+      const isDark = hostEl.dataset.theme === 'dark'
       const theme = isDark ? 'light' : 'dark'
       applyTheme(theme)
       // Only a choice is stored: until the reader makes one, each load follows the OS.
@@ -282,7 +363,7 @@ const MARKDOWN_EXTENSIONS = [
 
 function renderMarkdown(source) {
   const body = stripFrontmatter(source)
-  return marked.parse(body)
+  return markdownParser.parse(body)
 }
 
 /**
@@ -295,7 +376,7 @@ function sliceSubpath(markdown, subpath) {
   if (!subpath.startsWith('#')) return markdown
 
   const heading = subpath.slice(1).trim()
-  const blocks = marked.lexer(markdown)
+  const blocks = markdownParser.lexer(markdown)
   const isTargetHeading = block => {
     if (block.type !== 'heading') return false
     return block.text.trim() === heading
@@ -440,17 +521,41 @@ function vaultUrl(path) {
 function attachmentsQuery() {
   if (config.attachments === null) return ''
 
-  const vault = encodeURIComponent(config.vaultRoot)
+  const vault = encodeURIComponent(pathOnNotePage(config.vaultRoot))
   const attachments = encodeURIComponent(config.attachments)
   return `&vault=${vault}&attachments=${attachments}`
 }
 
+/**
+ * The page a note link opens on: this one, when the board is the whole page,
+ * or else the renderer's own page beside this module.
+ */
+function notePage() {
+  return config.ownsPage ? '' : APP_URL.href
+}
+
+/**
+ * A file's path, as the page that `notePage` names reads it. When the board is
+ * mounted in another page, a relative path names a file beside that page, so
+ * the link writes it from the site's root instead.
+ */
+function pathOnNotePage(path) {
+  if (config.ownsPage) return path
+
+  const pageFolder = new URL('./', window.location.href)
+  const url = new URL(encodePath(path), pageFolder)
+  if (url.origin !== window.location.origin) return path
+  return decodeURIComponent(url.pathname)
+}
+
 function noteHref(path) {
-  return `?note=${encodeURIComponent(path)}${attachmentsQuery()}`
+  const notePath = encodeURIComponent(pathOnNotePage(path))
+  return `${notePage()}?note=${notePath}${attachmentsQuery()}`
 }
 
 function rawHref(path) {
-  return `?raw=${encodeURIComponent(path)}${attachmentsQuery()}`
+  const notePath = encodeURIComponent(pathOnNotePage(path))
+  return `${notePage()}?raw=${notePath}${attachmentsQuery()}`
 }
 
 function fileExtension(path) {
@@ -780,7 +885,7 @@ function splitTextNode(text) {
 
   const wholeCardWouldBeHeader = body.trim() === ''
   if (firstLine === '' || wholeCardWouldBeHeader) return { header: null, body: source }
-  const firstBlock = marked.lexer(source)[0]
+  const firstBlock = markdownParser.lexer(source)[0]
   if (firstBlock.type !== 'paragraph') return { header: null, body: source }
 
   return { header: firstLine, body: body }
@@ -1118,6 +1223,9 @@ function installViewportControls() {
   wrapperEl.addEventListener('pointerup', endPan)
   wrapperEl.addEventListener('pointercancel', endPan)
 
+  // On a board that leaves the plain wheel to its page, only the focused card
+  // scrolls: any other card under the pointer would take the wheel instead.
+  if (!config.ownsPage) wrapperEl.dataset.wheel = 'page'
   wrapperEl.addEventListener(
     'wheel',
     event => {
@@ -1125,11 +1233,15 @@ function installViewportControls() {
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault()
         const factor = Math.exp(-event.deltaY / ZOOM_WHEEL_SENSITIVITY)
-        zoomAt(event.clientX, event.clientY, view.zoom * factor)
+        // A board mounted in a page need not start at the window's corner.
+        const rect = wrapperEl.getBoundingClientRect()
+        zoomAt(event.clientX - rect.left, event.clientY - rect.top, view.zoom * factor)
         return
       }
 
       if (wheelScrollsCard(event.target)) return
+      // A board mounted in another page leaves the plain wheel to that page.
+      if (!config.ownsPage) return
 
       event.preventDefault()
       view.x -= event.deltaX
@@ -1198,6 +1310,7 @@ function showRequestedCard(id) {
 let viewUrlTimer = 0
 
 function scheduleViewUrl() {
+  if (!config.ownsPage) return
   clearTimeout(viewUrlTimer)
   viewUrlTimer = setTimeout(writeViewUrl, VIEW_URL_DELAY)
 }
@@ -1936,8 +2049,8 @@ function resolveAttachments(params) {
 async function showFileView(path, mode) {
   const isRaw = mode === 'raw'
 
-  document.body.dataset.mode = 'file'
-  document.title = path
+  hostEl.dataset.mode = 'file'
+  if (config.ownsPage) document.title = path
   fileViewPathEl.textContent = path
   fileViewToggleEl.href = isRaw ? noteHref(path) : rawHref(path)
   fileViewToggleEl.textContent = isRaw ? 'Rendered' : 'Source'
@@ -1958,12 +2071,10 @@ async function showFileView(path, mode) {
   fileViewBodyEl.replaceChildren(sourceEl)
 }
 
-async function main() {
+async function main(params) {
   installThemeToggles()
   // A single newline is a line break, as in Obsidian with "Strict line breaks" off.
-  marked.use({ gfm: true, breaks: true, extensions: MARKDOWN_EXTENSIONS })
-
-  const params = new URLSearchParams(window.location.search)
+  markdownParser = new marked.Marked({ gfm: true, breaks: true, extensions: MARKDOWN_EXTENSIONS })
 
   for (const mode of ['note', 'raw']) {
     const path = params.get(mode)
@@ -2003,7 +2114,73 @@ async function main() {
   installGridSnapControl()
 }
 
-main().catch(error => {
-  showStatus(String(error.message || error))
-  console.error(error)
-})
+/** Appends `el`, a `<link>` or a `<script>`, to `parent`, and resolves once the file at `url` has loaded. */
+function appendLoaded(parent, el, url) {
+  const loaded = new Promise((resolve, reject) => {
+    el.addEventListener('load', resolve)
+    el.addEventListener('error', () => reject(new Error(`Cannot load ${url}`)))
+  })
+  parent.append(el)
+  return loaded
+}
+
+function linkStylesheet(parent, path) {
+  const linkEl = document.createElement('link')
+  linkEl.rel = 'stylesheet'
+  linkEl.href = new URL(path, APP_URL).href
+  return appendLoaded(parent, linkEl, linkEl.href)
+}
+
+/** Runs a library as a classic script, which defines the library's global. */
+function loadLibrary(path) {
+  const scriptEl = document.createElement('script')
+  scriptEl.src = new URL(path, APP_URL).href
+  return appendLoaded(document.head, scriptEl, scriptEl.src)
+}
+
+/**
+ * Links the board's stylesheets into its shadow root, and loads each library
+ * the page has not. A shadow root ignores `@font-face`, so KaTeX's stylesheet
+ * goes into the page's head as well, to declare its fonts.
+ */
+function loadAssets(shadowRoot) {
+  const loads = [linkStylesheet(document.head, KATEX_STYLESHEET)]
+  for (const path of BOARD_STYLESHEETS) loads.push(linkStylesheet(shadowRoot, path))
+  for (const [name, path] of LIBRARIES) {
+    if (name in window) continue
+    loads.push(loadLibrary(path))
+  }
+  return Promise.all(loads)
+}
+
+/**
+ * Draws a board inside `el`, in a shadow root, which keeps the page's styles
+ * and the board's apart. A page shows one board.
+ *
+ * Without `params`, the board is the whole page: it reads the parameters from
+ * the page's address and keeps its view there. With `params`, anything
+ * `URLSearchParams` takes, such as `{ canvas: 'boards/raft.canvas' }`, it
+ * reads those, and leaves the page's address and title alone. Either way, a
+ * relative path is relative to the page's address.
+ *
+ * Resolves once the board is drawn. A board that cannot be drawn shows why,
+ * and the promise rejects.
+ */
+export async function mount(el, params) {
+  if (!(el instanceof Element)) throw new TypeError(`mount draws a board in an element, got ${el}`)
+  if (hostEl !== null) throw new Error('mount draws one board per page, and this page has one')
+  const shadowRoot = el.attachShadow({ mode: 'open' })
+  hostEl = el
+  config.ownsPage = params === undefined
+  const query = config.ownsPage ? window.location.search : params
+  try {
+    await loadAssets(shadowRoot)
+    shadowRoot.append(boardFragment)
+    await main(new URLSearchParams(query))
+  } catch (error) {
+    // The markup waits for its stylesheets, so a failed load has left it out.
+    shadowRoot.append(boardFragment)
+    showStatus(String(error.message || error))
+    throw error
+  }
+}

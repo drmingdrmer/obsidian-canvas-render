@@ -118,18 +118,16 @@ test('a size change routes each edge once, though both its cards changed size', 
     nodes: [textCard('a', 0, 0, 'A\nbody'), textCard('b', 600, 0, 'B\nbody')],
     edges: [{ id: 'ab', fromNode: 'a', toNode: 'b' }],
   })
-  const routed = await page.evaluate(() => {
-    const route = layoutEdge
-    const edgeIds = []
-    window.layoutEdge = record => {
-      edgeIds.push(record.edge.id)
-      route(record)
-    }
+  // Each routing writes the line's `d` once, so the writes count the routings.
+  const routings = await page.locator('.canvas-edge-line').evaluate(line => {
+    const observer = new MutationObserver(() => {})
+    observer.observe(line, { attributeFilter: ['d'] })
     applyCardSize('compact')
-    window.layoutEdge = route
-    return edgeIds
+    const records = observer.takeRecords()
+    observer.disconnect()
+    return records.length
   })
-  expect(routed).toEqual(['ab'])
+  expect(routings).toBe(1)
 })
 
 // Opens a Wide board whose file card stays at "Loading…" until the returned
