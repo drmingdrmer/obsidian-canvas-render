@@ -78,7 +78,7 @@ The host has to send `Access-Control-Allow-Origin`, which `raw.githubusercontent
 - The board is drawn in a shadow root, so the page's styles do not reach the board, and the board's styles do not reach the page. The page sets the element's height; without one, the board is 70% as tall as the window.
 - A plain wheel over the board scrolls the page. Ctrl or ⌘ with the wheel, or a trackpad pinch, zooms the board, and a drag on its background pans it. The wheel scrolls a card only after a press on the card puts the focus on it.
 - The board never writes `at` or `focus` into the page's address. To open it on a view, copy those from the renderer's own page, and add them to the second argument.
-- A note link opens the renderer's own page, `index.html` beside `canvas-render.js`. That page reads the note from its own site, so serve the renderer from the same site as the page.
+- A click on a note card's title, on its `</>` icon, or on a wikilink to a note without a card shows the note inside the board, over the cards. The ← button above the note goes back to the cards. With ⌘, Ctrl or Shift held, the click opens the renderer's own page, `index.html` beside `canvas-render.js`. That page reads the note only when the renderer sits on the page's own site.
 - `mount` loads `marked`, KaTeX and DOMPurify from `lib/` beside the module. A page that has loaded one of them already lends its copy to the board.
 - `mount` also adds KaTeX's stylesheet to the page's `<head>`, because a browser loads fonts only from the page's own stylesheets. That stylesheet styles any KaTeX formula of the page too.
 - A page shows one board. A second `mount` fails.

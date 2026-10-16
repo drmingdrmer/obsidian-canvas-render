@@ -37,14 +37,19 @@ const BOARD = {
   nodes: [textCard('a', 0, 0, `A\n${LINES}`), { id: 'n', type: 'file', file: 'n.md', x: 300, y: 0, width: 200, height: 100 }],
 }
 
+// Note n, the one note with a card, links to note m, which has none, and to a
+// note that is missing. Note m links back to n.
+const NOTE = '# Note\n\n[[m]] [[gone]]'
+
 // Serves the post, the renderer at /canvas/ as it is on disk, and the board
-// and its note at /boards/b/, then waits for the board to be drawn.
+// and its notes at /boards/b/, then waits for the board to be drawn.
 async function openPost(page) {
   await page.route(`${SITE}/**`, route => {
     const url = new URL(route.request().url())
     if (url.pathname === '/posts/post.html') return route.fulfill({ body: POST, contentType: 'text/html' })
     if (url.pathname === '/boards/b/board.canvas') return route.fulfill({ json: BOARD })
-    if (url.pathname === '/boards/b/n.md') return route.fulfill({ body: '# Note' })
+    if (url.pathname === '/boards/b/n.md') return route.fulfill({ body: NOTE })
+    if (url.pathname === '/boards/b/m.md') return route.fulfill({ body: '# M\n\n[[n]]' })
     if (!url.pathname.startsWith('/canvas/')) return route.fulfill({ status: 404 })
 
     const relative = decodeURIComponent(url.pathname.slice('/canvas/'.length)) || 'index.html'
@@ -141,6 +146,55 @@ test('a note link opens the renderer page, with each path from the site root', a
 
   await page.goto(href)
   await expect(page.locator('#file-view-body h1')).toHaveText('Note')
+})
+
+test('a note link on a mounted board shows the note inside the board, until ← goes back', async ({ page }) => {
+  await openPost(page)
+  await page.locator('.canvas-node-title-link').first().click()
+
+  await expect(page.locator('#file-view-body h1')).toHaveText('Note')
+  await expect(page.locator('#file-view-back')).toBeVisible()
+  await expect(page.locator('#wrapper')).toHaveAttribute('inert', '')
+  expect(page.url()).toBe(POST_URL)
+  expect(page.context().pages()).toHaveLength(1)
+
+  await page.locator('#file-view-back').click()
+  await expect(page.locator('#file-view')).toBeHidden()
+  await expect(page.locator('#wrapper')).not.toHaveAttribute('inert')
+  await expect(page.locator('.canvas-node')).toHaveCount(2)
+})
+
+test('the source icon and the toggle of a mounted board switch the note in place', async ({ page }) => {
+  await openPost(page)
+  await page.locator('.canvas-node-source-link').click()
+  const toggle = page.locator('#file-view-toggle')
+  await expect(toggle).toHaveText('Rendered')
+  const source = await page.locator('.file-view-source').textContent()
+  expect(source).toBe(NOTE)
+
+  await toggle.click()
+  await expect(page.locator('#file-view-body h1')).toHaveText('Note')
+  await expect(toggle).toHaveText('Source')
+  expect(page.url()).toBe(POST_URL)
+})
+
+test('a wikilink in the note view opens a note without a card there, and one with a card on the board', async ({ page }) => {
+  await openPost(page)
+  await page.locator('.canvas-node-title-link').first().click()
+  await page.locator('#file-view-body .internal-link[title="m"]').click()
+  await expect(page.locator('#file-view-body h1')).toHaveText('M')
+
+  await page.locator('#file-view-body .internal-link[title="n"]').click()
+  await expect(page.locator('#file-view')).toBeHidden()
+  await expect(page.locator('.canvas-node[data-type="file"]')).toHaveAttribute('data-focused', 'true')
+})
+
+test('a note that cannot be read says why inside the board', async ({ page, expectedErrors }) => {
+  expectedErrors.push(`HTTP 404 ${SITE}/boards/b/gone.md`)
+  await openPost(page)
+  await page.locator('.canvas-node-title-link').first().click()
+  await page.locator('#file-view-body .internal-link[title="gone"]').click()
+  await expect(page.locator('#file-view-body')).toHaveText('Cannot read ../boards/b/gone.md (HTTP 404)')
 })
 
 test('a page shows one board, so a second mount fails', async ({ page }) => {

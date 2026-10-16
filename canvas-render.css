@@ -631,8 +631,10 @@
   display: none;
 }
 
+/* Over a board, the view covers it, and the board stays drawn beneath. */
 .file-view {
-  height: 100%;
+  position: absolute;
+  inset: 0;
   overflow: auto;
   background: var(--background-primary);
 }
@@ -669,6 +671,7 @@
   text-decoration: underline;
 }
 
+.file-view-back,
 .file-view-theme {
   flex: none;
   width: 26px;
@@ -683,6 +686,7 @@
   cursor: pointer;
 }
 
+.file-view-back:hover,
 .file-view-theme:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);

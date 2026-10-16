@@ -26,6 +26,7 @@ test('?note= renders a note on a page of its own, with a link to its source', as
 
   await expect(page.locator('body')).toHaveAttribute('data-mode', 'file')
   await expect(page.locator('#wrapper')).toBeHidden()
+  await expect(page.locator('#file-view-back')).toBeHidden()
   await expect(page.locator('#status')).toBeHidden()
 })
 

@@ -164,6 +164,7 @@ const BOARD_MARKUP = `
 
 <div class="file-view" id="file-view" hidden>
   <div class="file-view-header">
+    <button class="file-view-back" id="file-view-back" title="Back to the board" hidden>←</button>
     <span class="file-view-path" id="file-view-path"></span>
     <a class="file-view-toggle" id="file-view-toggle"></a>
     <button class="file-view-theme theme-toggle" title="Toggle light and dark theme">☾</button>
@@ -190,6 +191,7 @@ const searchEl = boardFragment.getElementById('search')
 const searchResultsEl = boardFragment.getElementById('search-results')
 const themeToggleEls = boardFragment.querySelectorAll('.theme-toggle')
 const fileViewEl = boardFragment.getElementById('file-view')
+const fileViewBackEl = boardFragment.getElementById('file-view-back')
 const fileViewPathEl = boardFragment.getElementById('file-view-path')
 const fileViewToggleEl = boardFragment.getElementById('file-view-toggle')
 const fileViewBodyEl = boardFragment.getElementById('file-view-body')
@@ -620,7 +622,8 @@ function linkWikilink(link, documentPath) {
   if (linkPath === '') return
 
   const notePath = fileExtension(linkPath) === 'md' ? linkPath : `${linkPath}.md`
-  link.href = noteHref(directoryOf(documentPath) + notePath)
+  const path = directoryOf(documentPath) + notePath
+  link.href = noteHref(path)
   link.addEventListener('click', event => {
     const hasModifier = event.metaKey || event.ctrlKey || event.shiftKey
     if (hasModifier) return
@@ -628,8 +631,11 @@ function linkWikilink(link, documentPath) {
     if (node === null) return
 
     event.preventDefault()
+    closeFileView()
     showCard(node)
   })
+  // After the listener above, so that a card on the board wins.
+  showOnPlainClick(link, () => openFile(path, 'note'))
 }
 
 /**
@@ -854,6 +860,7 @@ function createTitleElement(node) {
     primaryEl = createTitleLink(url, `Open ${node.url}`)
   } else if (isNote) {
     primaryEl = createTitleLink(noteHref(config.vaultRoot + node.file), `Read ${node.file}`)
+    showOnPlainClick(primaryEl, () => openFile(config.vaultRoot + node.file, 'note'))
   } else {
     primaryEl = createTitleLink(url, `Open ${node.file}`)
   }
@@ -865,6 +872,7 @@ function createTitleElement(node) {
 
   const sourceEl = createTitleLink(rawHref(config.vaultRoot + node.file), `View source of ${node.file}`)
   sourceEl.classList.add('canvas-node-source-link')
+  showOnPlainClick(sourceEl, () => openFile(config.vaultRoot + node.file, 'raw'))
   sourceEl.appendChild(createIcon(SOURCE_ICON))
   titleEl.appendChild(sourceEl)
   return titleEl
@@ -2036,9 +2044,13 @@ function resolveAttachments(params) {
   return `${folder}/`
 }
 
+/** The file the file view shows, as `{ path, mode }`, or null while the view is closed. */
+let shownFile = null
+
 /**
  * Shows one note on its own, either rendered for reading (`note`) or as its
- * markdown source (`raw`), with a link across to the other one.
+ * markdown source (`raw`), with a link across to the other one. Over a board,
+ * the view keeps the board out of reach until its back button closes it.
  *
  * The bytes are read here rather than by linking straight at the `.md`, because
  * hosts disagree on the media type they give markdown — GitHub Pages, nginx and
@@ -2048,17 +2060,25 @@ function resolveAttachments(params) {
  */
 async function showFileView(path, mode) {
   const isRaw = mode === 'raw'
+  const file = { path: path, mode: mode }
+  shownFile = file
 
-  hostEl.dataset.mode = 'file'
   if (config.ownsPage) document.title = path
   fileViewPathEl.textContent = path
   fileViewToggleEl.href = isRaw ? noteHref(path) : rawHref(path)
   fileViewToggleEl.textContent = isRaw ? 'Rendered' : 'Source'
+  const coversBoard = hostEl.dataset.mode !== 'file'
+  fileViewBackEl.hidden = !coversBoard
+  wrapperEl.inert = coversBoard
+  fileViewBodyEl.replaceChildren()
+  fileViewEl.scrollTop = 0
   fileViewEl.hidden = false
 
   const url = encodePath(path)
   const response = await fetchFile(url, path)
   const text = await response.text()
+  // The view may have closed, or moved on to another file, while this one loaded.
+  if (shownFile !== file) return
 
   if (!isRaw) {
     fileViewBodyEl.replaceChildren(markdownElement(renderMarkdown(text), path))
@@ -2071,8 +2091,55 @@ async function showFileView(path, mode) {
   fileViewBodyEl.replaceChildren(sourceEl)
 }
 
+/** Shows a file in the view, and a file that cannot be read says why there. */
+function openFile(path, mode) {
+  const shown = showFileView(path, mode)
+  // showFileView records the file before its first await.
+  const file = shownFile
+  shown.catch(error => {
+    if (shownFile !== file) return
+    fileViewBodyEl.replaceChildren(placeholderElement(error.message))
+  })
+}
+
+/** Closes the view over the board, and gives the board back to the reader. */
+function closeFileView() {
+  shownFile = null
+  fileViewEl.hidden = true
+  wrapperEl.inert = false
+}
+
+/**
+ * On a board mounted in another page, a plain click on a link to a file runs
+ * `show`, which shows the file inside the board. The link itself opens the
+ * renderer's own page, which may sit on another site and then cannot read the
+ * files of this one. A click with a modifier key still opens the link.
+ */
+function showOnPlainClick(linkEl, show) {
+  if (config.ownsPage) return
+
+  linkEl.addEventListener('click', event => {
+    if (event.defaultPrevented) return
+    const hasModifier = event.metaKey || event.ctrlKey || event.shiftKey
+    if (hasModifier) return
+
+    event.preventDefault()
+    show()
+  })
+}
+
+/** The back button returns to the board; the toggle shows the file's other form. */
+function installFileView() {
+  fileViewBackEl.addEventListener('click', closeFileView)
+  showOnPlainClick(fileViewToggleEl, () => {
+    const mode = shownFile.mode === 'raw' ? 'note' : 'raw'
+    openFile(shownFile.path, mode)
+  })
+}
+
 async function main(params) {
   installThemeToggles()
+  installFileView()
   // A single newline is a line break, as in Obsidian with "Strict line breaks" off.
   markdownParser = new marked.Marked({ gfm: true, breaks: true, extensions: MARKDOWN_EXTENSIONS })
 
@@ -2082,6 +2149,7 @@ async function main(params) {
     assertAllowedHost(path, mode)
     config.vaultRoot = resolveVaultRoot(params, path)
     config.attachments = resolveAttachments(params)
+    hostEl.dataset.mode = 'file'
     await showFileView(path, mode)
     return
   }
