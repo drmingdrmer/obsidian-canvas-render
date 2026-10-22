@@ -84,6 +84,8 @@
   width: 0;
   height: 0;
   transform-origin: 0 0;
+  /* CSS pixels per canvas unit, which `applySpread` sets. */
+  --spread: 1;
 }
 
 .canvas-edges {
@@ -119,6 +121,13 @@
 
 .canvas-node {
   position: absolute;
+  /* The box comes in canvas units, and the spread turns them into CSS pixels:
+     the board grows with the spread, while the text and the lines do not. */
+  left: calc(var(--node-x) * var(--spread) * 1px);
+  top: calc(var(--node-y) * var(--spread) * 1px);
+  width: calc(var(--node-width) * var(--spread) * 1px);
+  height: calc(var(--node-height) * var(--spread) * 1px);
+  max-height: calc(var(--node-max-height) * var(--spread) * 1px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--node-color, var(--canvas-node-border));
@@ -151,6 +160,11 @@
 
 /* A card being resized has to keep up with the pointer, not ease after it. */
 .canvas-node.is-resizing {
+  transition: none;
+}
+
+/* A spread redraws the edges at once, so the cards cannot ease after them. */
+.canvas[data-spreading] .canvas-node {
   transition: none;
 }
 
@@ -280,6 +294,10 @@
 /* The title already supplies the top margin. */
 .canvas-node-title + .canvas-node-content {
   padding-top: 0;
+}
+
+.canvas-node[data-sized="content"] {
+  height: auto;
 }
 
 /* A card sized by its content is as tall as its body, so the body cannot take

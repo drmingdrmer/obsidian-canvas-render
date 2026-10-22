@@ -36,8 +36,9 @@ Any static host serves the repository as-is. On GitHub Pages, **keep the `.nojek
 | `note` | Render a single markdown file on its own, for reading, instead of a canvas |
 | `raw` | Show a single markdown file as plain source |
 | `cards` | Draw every card at one size — `actual`, `wide` or `compact` — instead of the size each card stores |
-| `at` | Open the board on `<x>,<y>,<zoom>`: that canvas point at the centre of the window, at that zoom, where 1 is 100% |
+| `at` | Open the board on `<x>,<y>,<zoom>`: that canvas point at the centre of the window, at that zoom of the text, where 1 is 100% |
 | `focus` | Open the board fitted to the card with this id, with the focus on it |
+| `spread` | Draw everything on the board but the text this many times larger, from 1 to 4, so that each card shows more of its content. Defaults to 1 |
 
 `canvas`, `vault`, `note` and `raw` each take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is stripped of script before it is drawn, but the rest of it still appears as this page's own content. The same rule holds for the file each file card names, and for `attachments`, once the vault root is put in front of them. A card whose file leads to any other host shows the refusal instead.
 
@@ -76,8 +77,8 @@ The host has to send `Access-Control-Allow-Origin`, which `raw.githubusercontent
 
 - The second argument takes the URL parameters above, by the same names. A relative path in it is relative to the page's address.
 - The board is drawn in a shadow root, so the page's styles do not reach the board, and the board's styles do not reach the page. The page sets the element's height; without one, the board is 70% as tall as the window.
-- A plain wheel over the board scrolls the page. Ctrl or ⌘ with the wheel, or a trackpad pinch, zooms the board, and a drag on its background pans it. The wheel scrolls a card only after a press on the card puts the focus on it.
-- The board never writes `at` or `focus` into the page's address. To open it on a view, copy those from the renderer's own page, and add them to the second argument.
+- A plain wheel over the board scrolls the page. Ctrl or ⌘ with the wheel, or a trackpad pinch, zooms the board, and a drag on its background pans it. Alt with the wheel or the pinch changes its spread. The wheel scrolls a card only after a press on the card puts the focus on it.
+- The board never writes `at`, `focus` or `spread` into the page's address. To open it on a view, copy those from the renderer's own page, and add them to the second argument.
 - A click on a note card's title, on its `</>` icon, or on a wikilink to a note without a card shows the note inside the board, over the cards. The ← button above the note goes back to the cards. With ⌘, Ctrl or Shift held, the click opens the renderer's own page, `index.html` beside `canvas-render.js`. That page reads the note only when the renderer sits on the page's own site.
 - `mount` loads `marked`, KaTeX and DOMPurify from `lib/` beside the module. A page that has loaded one of them already lends its copy to the board.
 - `mount` also adds KaTeX's stylesheet to the page's `<head>`, because a browser loads fonts only from the page's own stylesheets. That stylesheet styles any KaTeX formula of the page too.
@@ -89,9 +90,11 @@ The host has to send `Access-Control-Allow-Origin`, which `raw.githubusercontent
 
 Dragging the background pans. ⌘/Ctrl + wheel, or a trackpad pinch, zooms. A plain wheel moves the board, and keeps moving it wherever the pointer happens to be — a card that slides under a still pointer partway through cannot take the rest of the gesture over.
 
+Alt + wheel, or Alt with a trackpad pinch, spreads the board around the pointer: everything on it but the text grows or shrinks, between 1× and 4×. A card spread to 2× is twice as wide and twice as tall around text of the same size, so it shows about four times as much of its note without being opened. The zoom label shows the zoom of the text, so a spread leaves it as it was.
+
 Pressing a card puts the focus on it, marked by an accent border. A wheel over that one card then scrolls its content, which is how a card longer than its box is read. Pressing the board takes the focus back, and the wheel moves the board again.
 
-The address bar follows the view, so a copied link opens the board on the same view. A view fitted to one card, by a search or a wikilink, is written as `focus=<card id>`. Any other moved view is written as `at=<x>,<y>,<zoom>`, with the canvas point at the centre of the window, so the link shows the same spot in a window of any size. A view fitted to the whole board writes neither. A link to a card the board no longer holds says so, and shows the whole board.
+The address bar follows the view, so a copied link opens the board on the same view. A view fitted to one card, by a search or a wikilink, is written as `focus=<card id>`. Any other moved view is written as `at=<x>,<y>,<zoom>`, with the canvas point at the centre of the window, so the link shows the same spot in a window of any size. A view fitted to the whole board writes neither. A spread other than 1× is written as `spread=<n>` as well. A link to a card the board no longer holds says so, and shows the whole board.
 
 ## Moving and resizing cards
 
@@ -103,9 +106,11 @@ Nothing is written back to the file: a reload restores the board the `.canvas` d
 
 ## Controls
 
-The bar in the corner holds the search box, the zoom, the size of every card, the grid and the theme.
+The bar in the corner holds the search box, the zoom, the spread, the size of every card, the grid and the theme.
 
 The search box lists the cards whose name or text holds what is typed, ignoring case: a note card's file name and its note, a text card's text, a link card's URL and a group's label. Cards whose name holds it come first. Picking one, or pressing Enter for the first, fits the view to that card, at 100% at most, and puts the focus on it. Escape clears the box. The view stays on that card while the window or the card changes size, until the board is moved by hand.
+
+The spread's `−` and `+` step it by √2, which halves or doubles the area of every card. The label between them shows the spread, and resets it to 1×.
 
 `Actual`, `Wide` and `Compact` set the size of every card at once. `Actual` gives each card the size its file stores, `Wide` draws them all 520 px across and `Compact` 320 px. At both fixed widths the content sets the height, capped at 480 px and 240 px, so a long note scrolls inside its card rather than towering over the board. A card holding an image is as tall as the image needs, and one holding an iframe takes the cap, an iframe having no height of its own. Group frames keep the size the file gives them, since a frame marks out a region of the board.
 

@@ -82,6 +82,15 @@ const ZOOM_STEP = 1.15
 const FIT_PADDING = 60
 const FIT_MAX_ZOOM = 1
 
+/**
+ * The spread draws the board up to MAX_SPREAD times larger around text of the
+ * same size. A spread button multiplies it by SPREAD_STEP, which doubles the
+ * area of every card.
+ */
+const MIN_SPREAD = 1
+const MAX_SPREAD = 4
+const SPREAD_STEP = Math.SQRT2
+
 /** Wheel delta that doubles the zoom, divided by ln 2. Larger means gentler. */
 const ZOOM_WHEEL_SENSITIVITY = 400
 
@@ -149,6 +158,13 @@ const BOARD_MARKUP = `
 
     <span class="canvas-control-divider"></span>
     <span class="canvas-control-group">
+      <button class="canvas-control-item" id="spread-less" title="Shrink everything but the text">&minus;</button>
+      <button class="canvas-control-item" id="spread-reset" title="Reset to 1×">1×</button>
+      <button class="canvas-control-item" id="spread-more" title="Enlarge everything but the text">&plus;</button>
+    </span>
+
+    <span class="canvas-control-divider"></span>
+    <span class="canvas-control-group">
       <button class="canvas-control-item" data-card-size="actual" title="Cards at the size the file stores">Actual</button>
       <button class="canvas-control-item" data-card-size="wide" title="Every card at one wide size">Wide</button>
       <button class="canvas-control-item" data-card-size="compact" title="Every card at one compact size">Compact</button>
@@ -185,6 +201,9 @@ const zoomInEl = boardFragment.getElementById('zoom-in')
 const zoomOutEl = boardFragment.getElementById('zoom-out')
 const zoomResetEl = boardFragment.getElementById('zoom-reset')
 const zoomFitEl = boardFragment.getElementById('zoom-fit')
+const spreadLessEl = boardFragment.getElementById('spread-less')
+const spreadResetEl = boardFragment.getElementById('spread-reset')
+const spreadMoreEl = boardFragment.getElementById('spread-more')
 const cardSizeEls = boardFragment.querySelectorAll('[data-card-size]')
 const gridSnapEl = boardFragment.getElementById('grid-snap')
 const searchEl = boardFragment.getElementById('search')
@@ -217,11 +236,21 @@ let fittedView = null
 let zoomFloor = MIN_ZOOM
 
 /**
- * Read from the parameters at startup; the card size and the grid follow their
- * controls. `ownsPage` is false for a board mounted in another page, which
- * leaves that page's address and title alone.
+ * Read from the parameters at startup; the card size, the grid and the spread
+ * follow their controls. `ownsPage` is false for a board mounted in another
+ * page, which leaves that page's address and title alone. `spread` is how many
+ * CSS pixels a canvas unit takes, so the board grows with it and its text does
+ * not.
  */
-const config = { canvasPath: '', vaultRoot: '', attachments: null, cardSize: 'actual', snapToGrid: false, ownsPage: true }
+const config = {
+  canvasPath: '',
+  vaultRoot: '',
+  attachments: null,
+  cardSize: 'actual',
+  snapToGrid: false,
+  spread: MIN_SPREAD,
+  ownsPage: true,
+}
 
 /**
  * The drawn canvas: node data, the element each node was drawn as, the edges on
@@ -946,8 +975,8 @@ function createNodeElement(node) {
   const el = document.createElement('div')
   el.className = 'canvas-node'
   el.dataset.type = node.type
-  el.style.left = `${node.x}px`
-  el.style.top = `${node.y}px`
+  el.style.setProperty('--node-x', node.x)
+  el.style.setProperty('--node-y', node.y)
   applyNodeSize(el, node)
 
   const color = resolveColor(node.color)
@@ -1023,12 +1052,22 @@ function createEdgeElements(edge, fromNode, toNode) {
   return { group, edge, fromNode, toNode, path, startArrow, endArrow, label }
 }
 
+/**
+ * A node's box in the CSS pixels the canvas is laid out in. An edge is laid out
+ * in them too, so the spread moves its ends while its line and arrows keep
+ * their size.
+ */
+function spreadBox(node) {
+  const spread = config.spread
+  return { x: node.x * spread, y: node.y * spread, width: node.width * spread, height: node.height * spread }
+}
+
 /** Writes the geometry the endpoints' current positions imply into an existing edge. */
 function layoutEdge(record) {
   const { edge, fromNode, toNode } = record
   const fromSide = edge.fromSide || inferSide(fromNode, toNode)
   const toSide = edge.toSide || inferSide(toNode, fromNode)
-  const geometry = edgeGeometry(fromNode, fromSide, toNode, toSide)
+  const geometry = edgeGeometry(spreadBox(fromNode), fromSide, spreadBox(toNode), toSide)
 
   const { start, startControl, endControl, end } = geometry
   record.path.setAttribute(
@@ -1054,7 +1093,10 @@ function layoutEdge(record) {
 let shownZoomLabel = ''
 
 function applyView() {
-  canvasEl.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`
+  // The canvas is laid out in CSS pixels, `config.spread` of them to a canvas
+  // unit, so this scale is the zoom the text is drawn at.
+  const scale = view.zoom / config.spread
+  canvasEl.style.transform = `translate(${view.x}px, ${view.y}px) scale(${scale})`
 
   // Dots closer than MIN_DOT_SPACING run together into a flat grey, so a
   // zoomed-out board draws every second, fourth, … dot instead.
@@ -1069,14 +1111,15 @@ function applyView() {
 
   scheduleViewUrl()
 
-  const zoomLabel = `${Math.round(view.zoom * 100)}%`
+  const zoomLabel = `${Math.round(scale * 100)}%`
   if (zoomLabel === shownZoomLabel) return
   shownZoomLabel = zoomLabel
   zoomResetEl.textContent = zoomLabel
 }
 
 function zoomAt(screenX, screenY, nextZoom) {
-  const clamped = Math.min(MAX_ZOOM, Math.max(zoomFloor, nextZoom))
+  // MAX_ZOOM bounds the zoom of the text, which is the board's divided by the spread.
+  const clamped = Math.min(MAX_ZOOM * config.spread, Math.max(zoomFloor, nextZoom))
   const canvasX = (screenX - view.x) / view.zoom
   const canvasY = (screenY - view.y) / view.zoom
 
@@ -1089,6 +1132,43 @@ function zoomAt(screenX, screenY, nextZoom) {
 function zoomAroundCentre(nextZoom) {
   const rect = wrapperEl.getBoundingClientRect()
   zoomAt(rect.width / 2, rect.height / 2, nextZoom)
+}
+
+/** Lays the board out `spread` times larger than its text: a canvas unit takes that many CSS pixels. */
+function applySpread(spread) {
+  config.spread = spread
+  canvasEl.style.setProperty('--spread', spread)
+  const shown = Math.round(spread * 10) / 10
+  spreadResetEl.textContent = `${shown}×`
+}
+
+/**
+ * The other zoom: it enlarges or shrinks everything on the board but the text,
+ * around the screen point (screenX, screenY), so a larger card shows more of
+ * its content. The board's zoom moves by the same factor as the spread, which
+ * keeps the zoom of the text as it was.
+ */
+function spreadAt(screenX, screenY, nextSpread) {
+  const spread = Math.min(MAX_SPREAD, Math.max(MIN_SPREAD, nextSpread))
+  const nextZoom = (view.zoom * spread) / config.spread
+  // A board drawn closer together may take a zoom below the floor, and the
+  // zoom-out button goes on from there, as it does after a fit that needed one.
+  zoomFloor = Math.min(zoomFloor, nextZoom)
+
+  // The cards take their new boxes at once, as the edges are redrawn at once.
+  // Reading their sizes lays them out before their ease comes back.
+  canvasEl.dataset.spreading = 'true'
+  applySpread(spread)
+  readCardSizes()
+  delete canvasEl.dataset.spreading
+
+  relayoutAfterResize(layout.nodes)
+  zoomAt(screenX, screenY, nextZoom)
+}
+
+function spreadAroundCentre(nextSpread) {
+  const rect = wrapperEl.getBoundingClientRect()
+  spreadAt(rect.width / 2, rect.height / 2, nextSpread)
 }
 
 /**
@@ -1105,7 +1185,8 @@ function fitToContent(bounds, node = null) {
   const availableHeight = Math.max(rect.height - FIT_PADDING * 2, 1)
   const scaleX = availableWidth / Math.max(contentWidth, 1)
   const scaleY = availableHeight / Math.max(contentHeight, 1)
-  const scale = Math.min(scaleX, scaleY, FIT_MAX_ZOOM)
+  // A fit draws the text at FIT_MAX_ZOOM at most, whatever the spread.
+  const scale = Math.min(scaleX, scaleY, FIT_MAX_ZOOM * config.spread)
 
   view.zoom = scale
   // A card fitted on its own leaves the floor where the board's fit put it.
@@ -1237,13 +1318,17 @@ function installViewportControls() {
   wrapperEl.addEventListener(
     'wheel',
     event => {
-      // A trackpad pinch arrives as a wheel event with ctrlKey set.
-      if (event.ctrlKey || event.metaKey) {
+      // A trackpad pinch arrives as a wheel event with ctrlKey set. Alt turns
+      // the wheel, or the pinch, into the spread.
+      if (event.ctrlKey || event.metaKey || event.altKey) {
         event.preventDefault()
         const factor = Math.exp(-event.deltaY / ZOOM_WHEEL_SENSITIVITY)
         // A board mounted in a page need not start at the window's corner.
         const rect = wrapperEl.getBoundingClientRect()
-        zoomAt(event.clientX - rect.left, event.clientY - rect.top, view.zoom * factor)
+        const screenX = event.clientX - rect.left
+        const screenY = event.clientY - rect.top
+        if (event.altKey) spreadAt(screenX, screenY, config.spread * factor)
+        else zoomAt(screenX, screenY, view.zoom * factor)
         return
       }
 
@@ -1261,7 +1346,11 @@ function installViewportControls() {
 
   zoomInEl.addEventListener('click', () => zoomAroundCentre(view.zoom * ZOOM_STEP))
   zoomOutEl.addEventListener('click', () => zoomAroundCentre(view.zoom / ZOOM_STEP))
-  zoomResetEl.addEventListener('click', () => zoomAroundCentre(1))
+  // 100% draws the text at its own size, whatever the spread.
+  zoomResetEl.addEventListener('click', () => zoomAroundCentre(config.spread))
+  spreadMoreEl.addEventListener('click', () => spreadAroundCentre(config.spread * SPREAD_STEP))
+  spreadLessEl.addEventListener('click', () => spreadAroundCentre(config.spread / SPREAD_STEP))
+  spreadResetEl.addEventListener('click', () => spreadAroundCentre(MIN_SPREAD))
   // Recomputed at click time: a drag leaves the bounds captured at load stale.
   zoomFitEl.addEventListener('click', () => fitToContent(contentBounds(layout.nodes)))
 
@@ -1294,14 +1383,28 @@ function requestedCentre(params) {
   return { x: x, y: y, zoom: zoom }
 }
 
-/** Puts the canvas point `at` names at the centre of the viewport, then zooms around it to its zoom. */
+/** The spread the `spread` parameter names, or the smallest without one. */
+function requestedSpread(params) {
+  const value = params.get('spread')
+  if (value === null) return MIN_SPREAD
+
+  const spread = Number(value)
+  const inRange = spread >= MIN_SPREAD && spread <= MAX_SPREAD
+  if (!inRange) throw new Error(`the spread parameter accepts a number from ${MIN_SPREAD} to ${MAX_SPREAD}, got ${value}`)
+  return spread
+}
+
+/**
+ * Puts the canvas point `at` names at the centre of the viewport, then zooms
+ * around it to its zoom, which is the zoom of the text, as the label shows it.
+ */
 function centreView(centre) {
   const rect = wrapperEl.getBoundingClientRect()
   const screenX = rect.width / 2
   const screenY = rect.height / 2
   view.x = screenX - centre.x * view.zoom
   view.y = screenY - centre.y * view.zoom
-  zoomAt(screenX, screenY, centre.zoom)
+  zoomAt(screenX, screenY, centre.zoom * config.spread)
 }
 
 /** Fits the view to the card `focus` names, or says that the board holds no such card. */
@@ -1338,23 +1441,26 @@ function viewParameter() {
   const rect = wrapperEl.getBoundingClientRect()
   const centreX = (rect.width / 2 - view.x) / view.zoom
   const centreY = (rect.height / 2 - view.y) / view.zoom
-  const zoom = Number(view.zoom.toPrecision(3))
+  const textZoom = view.zoom / config.spread
+  const zoom = Number(textZoom.toPrecision(3))
   return `at=${Math.round(centreX)},${Math.round(centreY)},${zoom}`
 }
 
 /**
- * Rewrites `at` and `focus` in the address bar to the view, and keeps every
- * other parameter as it was typed: URLSearchParams would encode the slashes in
- * `canvas` and the commas in `at`.
+ * Rewrites `at`, `focus` and `spread` in the address bar to the view, and keeps
+ * every other parameter as it was typed: URLSearchParams would encode the
+ * slashes in `canvas` and the commas in `at`.
  */
 function writeViewUrl() {
   const pairs = window.location.search.slice(1).split('&')
   const parameters = pairs.filter(pair => {
     const name = pair.split('=')[0]
-    return name !== '' && name !== 'at' && name !== 'focus'
+    return name !== '' && name !== 'at' && name !== 'focus' && name !== 'spread'
   })
   const viewPair = viewParameter()
   if (viewPair !== null) parameters.push(viewPair)
+  const spread = Number(config.spread.toPrecision(3))
+  if (spread !== MIN_SPREAD) parameters.push(`spread=${spread}`)
 
   const search = parameters.length === 0 ? '' : `?${parameters.join('&')}`
   if (search === window.location.search) return
@@ -1394,8 +1500,8 @@ function placeNode(node, x, y) {
   node.y = y
 
   const el = layout.elements.get(node.id)
-  el.style.left = `${x}px`
-  el.style.top = `${y}px`
+  el.style.setProperty('--node-x', x)
+  el.style.setProperty('--node-y', y)
 
   relayoutNodeEdges(node)
 }
@@ -1411,9 +1517,9 @@ function sizeNode(node, width, height) {
   node.height = height
 
   const el = layout.elements.get(node.id)
-  el.style.width = `${width}px`
-  el.style.height = `${height}px`
-  el.style.maxHeight = `${height}px`
+  el.style.setProperty('--node-width', width)
+  el.style.setProperty('--node-height', height)
+  el.style.setProperty('--node-max-height', height)
   delete el.dataset.sized
 
   relayoutNodeEdges(node)
@@ -1631,33 +1737,33 @@ function applyNodeSize(el, node) {
   if (keepsAuthoredSize) {
     node.width = authored.width
     node.height = authored.height
-    el.style.width = `${authored.width}px`
-    el.style.height = `${authored.height}px`
-    el.style.maxHeight = `${authored.height}px`
+    el.style.setProperty('--node-width', authored.width)
+    el.style.setProperty('--node-height', authored.height)
+    el.style.setProperty('--node-max-height', authored.height)
     delete el.dataset.sized
     return
   }
 
   node.width = size.width
-  el.style.width = `${size.width}px`
-  el.style.maxHeight = `${size.maxHeight}px`
+  el.style.setProperty('--node-width', size.width)
+  el.style.setProperty('--node-max-height', size.maxHeight)
 
   if (holdsEmbed(node)) {
     node.height = size.maxHeight
-    el.style.height = `${size.maxHeight}px`
+    el.style.setProperty('--node-height', size.maxHeight)
     delete el.dataset.sized
     return
   }
 
-  el.style.height = 'auto'
   el.dataset.sized = 'content'
 }
 
 /** Copies the size a card was laid out at into its node data, and tells whether it changed. */
 function recordCardSize(node) {
   const el = layout.elements.get(node.id)
-  const width = el.offsetWidth
-  const height = el.offsetHeight
+  // The card is laid out in CSS pixels, `config.spread` of them to a canvas unit.
+  const width = el.offsetWidth / config.spread
+  const height = el.offsetHeight / config.spread
   const changed = width !== node.width || height !== node.height
   node.width = width
   node.height = height
@@ -1874,10 +1980,11 @@ function installSearch() {
 
 /** The SVG layer keeps a margin around the nodes so bowed edges are not clipped. */
 function resizeEdgeLayer(bounds) {
-  const layerX = bounds.minX - EDGE_LAYER_MARGIN
-  const layerY = bounds.minY - EDGE_LAYER_MARGIN
-  const layerWidth = bounds.maxX - bounds.minX + EDGE_LAYER_MARGIN * 2
-  const layerHeight = bounds.maxY - bounds.minY + EDGE_LAYER_MARGIN * 2
+  const spread = config.spread
+  const layerX = (bounds.minX - EDGE_LAYER_MARGIN) * spread
+  const layerY = (bounds.minY - EDGE_LAYER_MARGIN) * spread
+  const layerWidth = (bounds.maxX - bounds.minX + EDGE_LAYER_MARGIN * 2) * spread
+  const layerHeight = (bounds.maxY - bounds.minY + EDGE_LAYER_MARGIN * 2) * spread
 
   edgesEl.style.left = `${layerX}px`
   edgesEl.style.top = `${layerY}px`
@@ -2161,6 +2268,7 @@ async function main(params) {
   config.attachments = resolveAttachments(params)
   config.cardSize = preferredCardSize(params)
   const centre = requestedCentre(params)
+  applySpread(requestedSpread(params))
 
   showStatus(`Loading ${canvasPath} …`)
   const response = await fetchFile(encodePath(canvasPath), canvasPath)

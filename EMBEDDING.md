@@ -53,7 +53,7 @@ Put the board's element and the script that mounts it into the post:
 - `attachments: 'assets'` names the same folder as the third argument of `sync-vault.sh`. Leave it out when you left that argument out.
 - A post shows one board. A second `mount` on the same page fails.
 - A click on a note card's title, on its `</>` icon, or on a wikilink to a note without a card shows the note inside the board, over the cards. The ← button above the note goes back to the cards.
-- Over the board, the mouse wheel and a two-finger trackpad swipe scroll the post, as they do anywhere else on it. Ctrl or ⌘ with the wheel, or a pinch, zooms the board, and a drag on its background pans it. The wheel scrolls a card only after a click on the card.
+- Over the board, the mouse wheel and a two-finger trackpad swipe scroll the post, as they do anywhere else on it. Ctrl or ⌘ with the wheel, or a pinch, zooms the board, and a drag on its background pans it. Alt with the wheel or the pinch enlarges or shrinks everything on the board but the text. The wheel scrolls a card only after a click on the card.
 - Hugo drops raw HTML from Markdown unless the site config sets `markup.goldmark.renderer.unsafe = true`. Jekyll and Hexo keep it.
 
 ## Step 4: set the opening view
@@ -61,7 +61,8 @@ Put the board's element and the script that mounts it into the post:
 `mount` fits the whole board into its element, unless its second argument names another view:
 
 - `focus: '<card id>'` fits the view to one card. A card's id is its `id` field in the `.canvas` file.
-- `at: '<x>,<y>,<zoom>'` puts the canvas point `<x>,<y>` at the centre of the element, at that zoom, where 1 is 100%.
+- `at: '<x>,<y>,<zoom>'` puts the canvas point `<x>,<y>` at the centre of the element, at that zoom of the text, where 1 is 100%.
+- `spread: <n>` draws everything on the board but the text `<n>` times larger, from 1 to 4, so each card shows more of its note. It applies to the fitted view too.
 
 To find these values, open the board on the renderer's own page, which writes its view into its address. The copy on GitHub Pages cannot read a board on another site, so serve the renderer on your machine. Copy the board folder into your clone of this repository, and start `serve.sh` there:
 
@@ -70,7 +71,7 @@ cp -r ~/blog/static/boards/raft ~/obsidian-canvas-render/
 ~/obsidian-canvas-render/serve.sh
 ```
 
-Open `http://localhost:8000/?canvas=raft/raft.canvas&attachments=assets`, and move the board to the view the post needs. The address then ends in `at=<x>,<y>,<zoom>`. After a search or a wikilink fits the view to one card, it ends in `focus=<card id>` instead. Add that parameter to the second argument of `mount`, such as `{ canvas: '/boards/raft/raft.canvas', at: '120,40,0.8' }`. Adding `cards: 'compact'` draws every card at one compact size, which suits a narrow post.
+Open `http://localhost:8000/?canvas=raft/raft.canvas&attachments=assets`, and move the board to the view the post needs. The address then ends in `at=<x>,<y>,<zoom>`. After a search or a wikilink fits the view to one card, it ends in `focus=<card id>` instead. Alt with the wheel or a pinch spreads the board, and adds `spread=<n>` to the address. Add these parameters to the second argument of `mount`, such as `{ canvas: '/boards/raft/raft.canvas', at: '120,40,0.8', spread: 2 }`. Adding `cards: 'compact'` draws every card at one compact size, which suits a narrow post.
 
 ## Example: a board on drmingdrmer.github.io
 
