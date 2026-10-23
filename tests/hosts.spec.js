@@ -65,8 +65,9 @@ const REFUSED_QUERIES = [
   ['at=1,2', 'the at parameter accepts <x>,<y>,<zoom>, got 1,2'],
   ['at=1,2,-3', 'the at parameter accepts <x>,<y>,<zoom>, got 1,2,-3'],
   ['at=,,1', 'the at parameter accepts <x>,<y>,<zoom>, got ,,1'],
-  ['spread=5', 'the spread parameter accepts a number from 1 to 4, got 5'],
-  ['spread=x', 'the spread parameter accepts a number from 1 to 4, got x'],
+  ['text=5', 'the text parameter accepts a number from 0.25 to 4, got 5'],
+  ['text=0.2', 'the text parameter accepts a number from 0.25 to 4, got 0.2'],
+  ['text=x', 'the text parameter accepts a number from 0.25 to 4, got x'],
 ]
 
 // Runs in the page: 'ok' when the canvas parameter may hold the path, or else

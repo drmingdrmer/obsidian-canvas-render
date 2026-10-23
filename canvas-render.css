@@ -84,8 +84,9 @@
   width: 0;
   height: 0;
   transform-origin: 0 0;
-  /* CSS pixels per canvas unit, which `applySpread` sets. */
-  --spread: 1;
+  /* How many times its own size the text is drawn, which `applyTextScale` sets.
+     Every font size on the board is multiplied by it, and nothing else is. */
+  --text-scale: 1;
 }
 
 .canvas-edges {
@@ -108,12 +109,13 @@
 
 .canvas-edge-label {
   fill: var(--text-muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   text-anchor: middle;
   dominant-baseline: middle;
   paint-order: stroke;
   stroke: var(--canvas-background);
-  stroke-width: 5;
+  /* The halo that keeps the label clear of its line grows with the label. */
+  stroke-width: calc(5px * var(--text-scale));
   stroke-linejoin: round;
 }
 
@@ -121,13 +123,6 @@
 
 .canvas-node {
   position: absolute;
-  /* The box comes in canvas units, and the spread turns them into CSS pixels:
-     the board grows with the spread, while the text and the lines do not. */
-  left: calc(var(--node-x) * var(--spread) * 1px);
-  top: calc(var(--node-y) * var(--spread) * 1px);
-  width: calc(var(--node-width) * var(--spread) * 1px);
-  height: calc(var(--node-height) * var(--spread) * 1px);
-  max-height: calc(var(--node-max-height) * var(--spread) * 1px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--node-color, var(--canvas-node-border));
@@ -160,11 +155,6 @@
 
 /* A card being resized has to keep up with the pointer, not ease after it. */
 .canvas-node.is-resizing {
-  transition: none;
-}
-
-/* A spread redraws the edges at once, so the cards cannot ease after them. */
-.canvas[data-spreading] .canvas-node {
   transition: none;
 }
 
@@ -209,7 +199,7 @@
   align-items: center;
   padding: 10px 16px 8px;
   overflow: hidden;
-  font-size: 16px;
+  font-size: calc(16px * var(--text-scale));
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
@@ -273,7 +263,7 @@
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
   background: var(--background-modifier-hover);
-  font-size: 16px;
+  font-size: calc(16px * var(--text-scale));
   font-weight: 600;
   line-height: 1.4;
 }
@@ -284,7 +274,7 @@
   padding: 10px 16px;
   overflow: auto;
   border-radius: inherit;
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale));
   line-height: 1.6;
   overscroll-behavior: contain;
   /* The frame's grab cursor would promise a drag the body does not do. */
@@ -294,10 +284,6 @@
 /* The title already supplies the top margin. */
 .canvas-node-title + .canvas-node-content {
   padding-top: 0;
-}
-
-.canvas-node[data-sized="content"] {
-  height: auto;
 }
 
 /* A card sized by its content is as tall as its body, so the body cannot take
@@ -329,7 +315,7 @@
   margin-bottom: 4px;
   overflow: hidden;
   color: var(--text-normal);
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale));
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -384,7 +370,7 @@
   height: 100%;
   padding: 16px;
   color: var(--text-faint);
-  font-size: 14px;
+  font-size: calc(14px * var(--text-scale));
   text-align: center;
   word-break: break-all;
 }
