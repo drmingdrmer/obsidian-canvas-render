@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="560" viewBox="0 0 800 560" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .heading { font-size: 24px; fill: #4b5563; text-anchor: middle; }
+    .label { font-size: 26px; fill: #111827; text-anchor: middle; dominant-baseline: central; }
+    .caption { font-size: 19px; fill: #6b7280; text-anchor: middle; }
+    .edge { stroke: #9ca3af; stroke-width: 2.5; }
+    .pill { fill: #ffffff; stroke-width: 2.5; }
+    .neutral { stroke: #6b7280; }
+    .blue { stroke: #2563eb; }
+    .green { stroke: #16a34a; }
+    .orange { stroke: #ea580c; }
+  </style>
+  <rect width="800" height="560" rx="18" fill="#fbfaf6"/>
+  <line x1="400" y1="70" x2="400" y2="480" stroke="#d1d5db" stroke-width="2" stroke-dasharray="8 8"/>
+
+  <text class="heading" x="200" y="52">Intermediate fields of E/ℚ</text>
+  <text class="heading" x="600" y="52">Subgroups of G = Gal(E/ℚ)</text>
+
+  <g class="edge">
+    <line x1="200" y1="144" x2="80" y2="256"/>
+    <line x1="200" y1="144" x2="200" y2="256"/>
+    <line x1="200" y1="144" x2="320" y2="256"/>
+    <line x1="80" y1="304" x2="200" y2="416"/>
+    <line x1="200" y1="304" x2="200" y2="416"/>
+    <line x1="320" y1="304" x2="200" y2="416"/>
+    <line x1="600" y1="144" x2="480" y2="256"/>
+    <line x1="600" y1="144" x2="600" y2="256"/>
+    <line x1="600" y1="144" x2="720" y2="256"/>
+    <line x1="480" y1="304" x2="600" y2="416"/>
+    <line x1="600" y1="304" x2="600" y2="416"/>
+    <line x1="720" y1="304" x2="600" y2="416"/>
+  </g>
+
+  <rect class="pill neutral" x="110" y="96" width="180" height="48" rx="24"/>
+  <text class="label" x="200" y="120">ℚ(√2, √3)</text>
+  <rect class="pill blue" x="22" y="256" width="116" height="48" rx="24"/>
+  <text class="label" x="80" y="280">ℚ(√2)</text>
+  <rect class="pill green" x="142" y="256" width="116" height="48" rx="24"/>
+  <text class="label" x="200" y="280">ℚ(√3)</text>
+  <rect class="pill orange" x="262" y="256" width="116" height="48" rx="24"/>
+  <text class="label" x="320" y="280">ℚ(√6)</text>
+  <rect class="pill neutral" x="160" y="416" width="80" height="48" rx="24"/>
+  <text class="label" x="200" y="440">ℚ</text>
+
+  <rect class="pill neutral" x="550" y="96" width="100" height="48" rx="24"/>
+  <text class="label" x="600" y="120">{1}</text>
+  <rect class="pill blue" x="422" y="256" width="116" height="48" rx="24"/>
+  <text class="label" x="480" y="280">{1, <tspan font-style="italic">g</tspan>}</text>
+  <rect class="pill green" x="542" y="256" width="116" height="48" rx="24"/>
+  <text class="label" x="600" y="280">{1, <tspan font-style="italic">f</tspan>}</text>
+  <rect class="pill orange" x="662" y="256" width="116" height="48" rx="24"/>
+  <text class="label" x="720" y="280">{1, <tspan font-style="italic">fg</tspan>}</text>
+  <rect class="pill neutral" x="560" y="416" width="80" height="48" rx="24"/>
+  <text class="label" x="600" y="440"><tspan font-style="italic">G</tspan></text>
+
+  <text class="caption" x="400" y="516">Each field matches the subgroup that fixes it. Every line has degree 2 on the left</text>
+  <text class="caption" x="400" y="542">and index 2 on the right, and inclusion runs the other way.</text>
+</svg>
