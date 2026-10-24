@@ -1137,11 +1137,18 @@ function createEdgeElements(edge, fromNode, toNode) {
   return { group, edge, fromNode, toNode, path, startArrow, endArrow, label }
 }
 
-/** Writes the geometry the endpoints' current positions imply into an existing edge. */
-function layoutEdge(record) {
+/** The sides an edge leaves and enters its cards by, where the board draws it. */
+function edgeSides(record) {
   const { edge, fromNode, toNode } = record
   const fromSide = edge.fromSide || inferSide(fromNode, toNode)
   const toSide = edge.toSide || inferSide(toNode, fromNode)
+  return { fromSide, toSide }
+}
+
+/** Writes the geometry the endpoints' current positions imply into an existing edge. */
+function layoutEdge(record) {
+  const { fromNode, toNode } = record
+  const { fromSide, toSide } = edgeSides(record)
   const geometry = edgeGeometry(fromNode, fromSide, toNode, toSide)
 
   const { start, startControl, endControl, end } = geometry
@@ -2444,10 +2451,10 @@ function installFocusHistory() {
 
 // ---------------------------------------------------------------- neighbours
 
-/** In and Out, keyed by the direction of the edges whose cards they preview. */
+/** In and Out, keyed by the direction of the dependency edges whose cards they preview. */
 const NEIGHBOUR_BUTTONS = {
-  in: { label: 'In', title: 'Show the cards with an edge into this card' },
-  out: { label: 'Out', title: 'Show the cards this card has an edge to' },
+  in: { label: 'In', title: 'Show the cards to read before this one' },
+  out: { label: 'Out', title: 'Show the cards to read after this one' },
 }
 
 /** The directions In and Out preview the focused card's neighbours in: `in`, `out`, both or neither. */
@@ -2460,9 +2467,20 @@ let surroundedNode = null
 let neighbourPreviews = []
 
 /**
+ * A dependency edge leaves a card by its right side, and enters by its left
+ * side a card that builds on the first. An edge on the top side of a card
+ * joins a related topic, and one on the bottom side an example.
+ */
+function isDependency(record) {
+  const { fromSide, toSide } = edgeSides(record)
+  return fromSide === 'right' && toSide === 'left'
+}
+
+/**
  * The cards to preview around a card, in the given directions, each with the
- * edge that joins it to the card and that edge's direction: `in` for an edge
- * into the card, `out` for one out of it. A card that several edges join in
+ * dependency edge that joins it to the card and that edge's direction: `in`
+ * for an edge into the card, from a card to read before it, and `out` for one
+ * out of it, to a card to read after it. A card that several edges join in
  * one direction is previewed once in that direction, for the first of them.
  */
 function findNeighbours(node, directions) {
@@ -2471,6 +2489,7 @@ function findNeighbours(node, directions) {
   for (const record of attached) {
     // An edge from a card to itself leads to no other card.
     if (record.fromNode === record.toNode) continue
+    if (!isDependency(record)) continue
 
     const direction = record.toNode === node ? 'in' : 'out'
     if (!directions.has(direction)) continue
@@ -2490,8 +2509,8 @@ const LOCATE_ICON =
 
 /**
  * The bar in a card's top-right corner holds In and Out, and the button that
- * enlarges the card. In, or Out, is greyed out on a card that no edge leads
- * into, or out of.
+ * enlarges the card. In, or Out, is greyed out on a card that no dependency
+ * edge leads into, or out of.
  */
 function installNodeBar(node) {
   const el = layout.elements.get(node.id)

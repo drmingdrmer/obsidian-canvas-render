@@ -1,10 +1,14 @@
 const { test, expect, openBoard, textCard, dragBy } = require('./helpers')
 
-// Card f, with edges into it from b and a, which meet its left side, and from
-// c, which meets its top, and an edge out of it to d, which leaves its bottom
-// although d lies to its right. Card z has an edge into a. With `focus=f`, f is
-// fitted at zoom 1 with its top-left corner at (540, 310) of the 1280 × 720
-// window. The edge from a is red on the board.
+// Card f, with dependency edges into it from b and a, which leave their right
+// sides and enter its left side, and one out of it to d, which names no sides
+// and so runs from f's right side to d's left, as d lies right of f. The edge
+// from c, which lies above f, meets f's top side. The edge to e leaves f's
+// right side but meets e's top, and the edge back from e enters f's left side
+// but leaves e's bottom: none of these is a dependency edge. Card z has a
+// dependency edge into a. With `focus=f`, f is fitted at zoom 1 with its
+// top-left corner at (540, 310) of the 1280 × 720 window. The edge from a is
+// red on the board.
 const BOARD = {
   nodes: [
     textCard('f', 600, 400, 'Focus\nbody'),
@@ -13,12 +17,15 @@ const BOARD = {
     textCard('c', 600, -400, 'Gamma'),
     textCard('d', 1400, 400, 'Delta'),
     textCard('z', -600, 0, 'Zeta'),
+    textCard('e', 1400, 800, 'Epsilon'),
   ],
   edges: [
     { id: 'bf', fromNode: 'b', fromSide: 'right', toNode: 'f', toSide: 'left' },
     { id: 'af', fromNode: 'a', fromSide: 'right', toNode: 'f', toSide: 'left', label: 'uses', color: '1' },
     { id: 'cf', fromNode: 'c', toNode: 'f' },
-    { id: 'fd', fromNode: 'f', fromSide: 'bottom', toNode: 'd', toSide: 'left' },
+    { id: 'fd', fromNode: 'f', toNode: 'd' },
+    { id: 'fe', fromNode: 'f', fromSide: 'right', toNode: 'e', toSide: 'top' },
+    { id: 'ef', fromNode: 'e', fromSide: 'bottom', toNode: 'f', toSide: 'left' },
     { id: 'za', fromNode: 'z', toNode: 'a' },
   ],
 }
@@ -30,44 +37,40 @@ function previewBoxes(page) {
   })
 }
 
-test('In previews each card with an edge into the focused card, beside the side the edge meets', async ({ page }) => {
+test('In previews each card with a dependency edge into the focused card, left of it', async ({ page }) => {
   await openBoard(page, BOARD, {}, '&focus=f')
   const toggle = page.locator('.canvas-node').first().locator('[data-direction="in"]')
   await expect(toggle).toHaveAttribute('aria-pressed', 'false')
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-pressed', 'true')
 
-  await expect(page.locator('.canvas-neighbour')).toHaveText(['Beta', 'Alpha', 'Gamma'])
+  await expect(page.locator('.canvas-neighbour')).toHaveText(['Beta', 'Alpha'])
   // Beta and Alpha in a column 80 units left of f, centred on the middle of its
   // left side at y = 450, with Alpha on top, as its card is higher on the board
-  // than Beta's; Gamma 80 units above f.
+  // than Beta's.
   const boxes = await previewBoxes(page)
-  expect(boxes).toEqual([[320, 460, 200, 100], [320, 340, 200, 100], [600, 220, 200, 100]])
+  expect(boxes).toEqual([[320, 460, 200, 100], [320, 340, 200, 100]])
 
   // A copy of each edge leaves the preview by its side that faces f, and keeps
   // the edge's label and its arrow at f.
   const paths = await page.locator('.canvas-neighbour-link .canvas-edge-line').evaluateAll(els => {
     return els.map(el => el.getAttribute('d'))
   })
-  expect(paths).toEqual([
-    'M 520 510 C 555 510, 565 450, 600 450',
-    'M 520 390 C 555 390, 565 450, 600 450',
-    'M 700 320 C 700 348, 700 372, 700 400',
-  ])
+  expect(paths).toEqual(['M 520 510 C 555 510, 565 450, 600 450', 'M 520 390 C 555 390, 565 450, 600 450'])
   await expect(page.locator('.canvas-neighbour-link .canvas-edge-label')).toHaveText(['uses'])
   await expect(page.locator('.canvas-neighbour-link .canvas-edge-arrow').first()).toHaveAttribute('points', '600,450 587,443 587,457')
 })
 
-test('Out previews each card the focused card has an edge to, with the arrow at the preview', async ({ page }) => {
+test('Out previews each card the focused card has a dependency edge to, right of it, with the arrow at the preview', async ({ page }) => {
   await openBoard(page, BOARD, {}, '&focus=f')
   await page.locator('.canvas-node').first().locator('[data-direction="out"]').click()
 
   await expect(page.locator('.canvas-neighbour')).toHaveText(['Delta'])
-  // 80 units below f, centred on the middle of its bottom side, which the edge leaves.
+  // 80 units right of f, centred on the middle of its right side.
   const boxes = await previewBoxes(page)
-  expect(boxes).toEqual([[600, 580, 200, 100]])
-  await expect(page.locator('.canvas-neighbour-link .canvas-edge-line')).toHaveAttribute('d', 'M 700 500 C 700 528, 700 552, 700 580')
-  await expect(page.locator('.canvas-neighbour-link .canvas-edge-arrow')).toHaveAttribute('points', '700,580 707,567 693,567')
+  expect(boxes).toEqual([[880, 400, 200, 100]])
+  await expect(page.locator('.canvas-neighbour-link .canvas-edge-line')).toHaveAttribute('d', 'M 800 450 C 828 450, 852 450, 880 450')
+  await expect(page.locator('.canvas-neighbour-link .canvas-edge-arrow')).toHaveAttribute('points', '880,450 867,443 867,457')
 })
 
 test('In and Out show their previews together, and a second press of each removes its own', async ({ page }) => {
@@ -78,7 +81,7 @@ test('In and Out show their previews together, and a second press of each remove
   await inToggle.click()
   await outToggle.click()
   const previews = page.locator('.canvas-neighbour')
-  await expect(previews).toHaveText(['Beta', 'Alpha', 'Gamma', 'Delta'])
+  await expect(previews).toHaveText(['Beta', 'Alpha', 'Delta'])
 
   await inToggle.click()
   await expect(inToggle).toHaveAttribute('aria-pressed', 'false')
@@ -100,12 +103,12 @@ test('In and Out show on the focused card alone, and its previews go when the fo
   await expect(inToggle).toBeVisible()
   await inToggle.click()
   const previews = page.locator('.canvas-neighbour')
-  await expect(previews).toHaveText(['Beta', 'Alpha', 'Gamma'])
+  await expect(previews).toHaveText(['Beta', 'Alpha'])
 
   // A preview is not a card: a press on it leaves the focus, and the previews, on f.
   await previews.first().click()
   await expect(cards.nth(0)).toHaveAttribute('data-focused', 'true')
-  await expect(previews).toHaveText(['Beta', 'Alpha', 'Gamma'])
+  await expect(previews).toHaveText(['Beta', 'Alpha'])
 
   // The top-right corner of the viewport, clear of the cards and the previews.
   await page.mouse.click(1200, 50)
@@ -116,7 +119,7 @@ test('In and Out show on the focused card alone, and its previews go when the fo
 
   await cards.nth(0).click()
   await inToggle.click()
-  await expect(previews).toHaveCount(3)
+  await expect(previews).toHaveCount(2)
   await cards.nth(1).click()
   await expect(previews).toHaveCount(0)
   await expect(inToggle).toHaveAttribute('aria-pressed', 'false')
@@ -152,18 +155,18 @@ test('In and its previews are blue, and Out and its previews orange', async ({ p
   const frameColors = await page.locator('.canvas-neighbour').evaluateAll(els => {
     return els.map(el => getComputedStyle(el).borderTopColor)
   })
-  expect(frameColors).toEqual([blue, blue, blue, orange])
+  expect(frameColors).toEqual([blue, blue, orange])
   // The copy of the red edge from a takes the colour of In too.
   const linkColors = await page.locator('.canvas-neighbour-link .canvas-edge-line').evaluateAll(els => {
     return els.map(el => getComputedStyle(el).stroke)
   })
-  expect(linkColors).toEqual([blue, blue, blue, orange])
+  expect(linkColors).toEqual([blue, blue, orange])
 })
 
-test('In is greyed out on a card that no edge leads into, and Out on one that no edge leaves', async ({ page }) => {
+test('In is greyed out on a card that no dependency edge enters, and Out on one that none leaves', async ({ page }) => {
   await openBoard(page, BOARD)
   const cards = page.locator('.canvas-node')
-  // Card z has only an edge out of it, and card d only one into it.
+  // Card z has only a dependency edge out of it, and card d only one into it.
   const zDisabled = await cards.nth(5).locator('.canvas-node-neighbours').evaluateAll(els => {
     return els.map(el => el.disabled)
   })
@@ -172,6 +175,11 @@ test('In is greyed out on a card that no edge leads into, and Out on one that no
     return els.map(el => el.disabled)
   })
   expect(dDisabled).toEqual([false, true])
+  // Card c's only edge, to f, is no dependency edge.
+  const cDisabled = await cards.nth(3).locator('.canvas-node-neighbours').evaluateAll(els => {
+    return els.map(el => el.disabled)
+  })
+  expect(cDisabled).toEqual([true, true])
 })
 
 test('the previews follow the card they stand around as it is dragged', async ({ page }) => {
@@ -182,7 +190,7 @@ test('the previews follow the card they stand around as it is dragged', async ({
 
   // At zoom 1, f has moved by (40, 20), and every preview with it.
   const boxes = await previewBoxes(page)
-  expect(boxes).toEqual([[360, 480, 200, 100], [360, 360, 200, 100], [640, 240, 200, 100]])
+  expect(boxes).toEqual([[360, 480, 200, 100], [360, 360, 200, 100]])
 })
 
 test('the previews keep their distance from a card that a card size widens', async ({ page }) => {
@@ -202,10 +210,10 @@ test('a card that several edges join is previewed once in each direction, and an
   const board = {
     nodes: [textCard('f', 0, 0, 'Focus'), textCard('a', 400, 0, 'Alpha')],
     edges: [
-      { id: 'af', fromNode: 'a', toNode: 'f' },
-      { id: 'af-again', fromNode: 'a', toNode: 'f', label: 'again' },
+      { id: 'af', fromNode: 'a', fromSide: 'right', toNode: 'f', toSide: 'left' },
+      { id: 'af-again', fromNode: 'a', fromSide: 'right', toNode: 'f', toSide: 'left', label: 'again' },
       { id: 'fa', fromNode: 'f', toNode: 'a' },
-      { id: 'ff', fromNode: 'f', toNode: 'f' },
+      { id: 'ff', fromNode: 'f', fromSide: 'right', toNode: 'f', toSide: 'left' },
     ],
   }
   await openBoard(page, board, {}, '&focus=f')
@@ -214,9 +222,9 @@ test('a card that several edges join is previewed once in each direction, and an
   await bar.locator('[data-direction="out"]').click()
 
   await expect(page.locator('.canvas-neighbour')).toHaveText(['Alpha', 'Alpha'])
-  // Both stand right of f, where the edges meet it, the one for the edge in first.
+  // The one for the edges in stands left of f, and the one for the edge out right of it.
   const boxes = await previewBoxes(page)
-  expect(boxes).toEqual([[280, -60, 200, 100], [280, 60, 200, 100]])
+  expect(boxes).toEqual([[-280, 0, 200, 100], [280, 0, 200, 100]])
   // The first edge from a, which has no label, is the one copied.
   await expect(page.locator('.canvas-neighbour-link .canvas-edge-label')).toHaveCount(0)
 })

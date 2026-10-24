@@ -92,6 +92,18 @@ The host has to send `Access-Control-Allow-Origin`, which `raw.githubusercontent
 
 `index.html` calls `mount(document.body)`. Without the second argument, the board reads the URL parameters from the page's address, and keeps its view there.
 
+## What an edge means
+
+Each side of a card joins one kind of card, so that a reader knows what an edge means from where it meets the card:
+
+- The left side of a card joins the cards to read before it, and the right side joins the cards to read after it. A dependency edge runs from the right side of a card to the left side of a card that builds on it, with its arrow at the second card. The board then reads from left to right in the order to learn it.
+- The top side joins related topics. A related topic is worth reading beside the card, but the card does not build on it. A concept and its opposite are related topics, such as separable and purely inseparable extensions. So are one idea in two settings, such as the formal derivative of a polynomial and the derivative in calculus. So are two ideas that a third one combines, such as normal and separable extensions, which together make a Galois extension.
+- The bottom side joins examples, figures and other details that the card can do without. Taking such a card off the board leaves the rest of the board whole.
+
+The colour of an edge repeats its kind. A dependency edge keeps the default grey. An edge to a related topic is purple, Obsidian's preset colour `"6"`, and an edge to an example or a detail is green, preset colour `"4"`. The colour shows the kind along the whole edge, not only where the edge meets a card. An edge to an example joins the bottom side of a card to the top side of the example. A top side also joins related topics, so at the example's end only the colour tells the two kinds apart. No other colour has a meaning, and blue and orange stay free for the previews of `In` and `Out`.
+
+`In` and `Out` follow dependency edges alone: an edge counts only when it leaves a right side and enters a left side. An edge that names no side is drawn between the two sides that face each other, and counts by those.
+
 ## Moving around the board
 
 Dragging the background pans. ⌘/Ctrl + wheel, or a trackpad pinch, zooms. A plain wheel moves the board, and keeps moving it wherever the pointer happens to be — a card that slides under a still pointer partway through cannot take the rest of the gesture over.
@@ -102,7 +114,7 @@ Pressing a card puts the focus on it, marked by an accent border. A wheel over t
 
 Pressing Space shows the focused card whole, over the board, until Space is pressed again or the focus leaves the card. The card is drawn at 100%, or at the board's zoom when that is larger. It grows right and down from its top-left corner, up to the edges of the board: at least 520 px wide, and as tall as its content. A longer card scrolls inside. Near the right or bottom edge of the board, the card moves left or up, only as far as it takes to be as large as the same card in Wide: 520 px wide, and up to 480 px tall. Its box on the board, its edges and the other cards stay where they are. The button in the focused card's top-right corner does the same on a touch screen. The button stays where it was while the card is enlarged, so a second press in the same place puts the card back.
 
-The focused card's top-right corner also holds `In` and `Out`. `In` shows a preview of each card with an edge into the focused card, in a blue frame. `Out` shows one of each card it has an edge to, in an orange frame. Each preview stands beside the side of the card that its edge meets, and shows its card cut to 320 × 240 at most. A dashed copy of the edge, in the preview's colour, joins the preview to the card. A second press of `In` or `Out` removes its previews, and they all go when the focus leaves the card. A press on a preview leaves the focus on the card. The button in a preview's top-right corner flies the view to the preview's card, and puts the focus on it. `In` is greyed out on a card that no edge leads into, and `Out` on a card that no edge leaves.
+The focused card's top-right corner also holds `In` and `Out`, which follow the dependency edges of [What an edge means](#what-an-edge-means). `In` shows a preview of each card to read before the focused card, in a blue frame, left of the card. `Out` shows one of each card to read after it, in an orange frame, right of the card. Each preview shows its card cut to 320 × 240 at most. A dashed copy of the edge, in the preview's colour, joins the preview to the card. A second press of `In` or `Out` removes its previews, and they all go when the focus leaves the card. A press on a preview leaves the focus on the card. The button in a preview's top-right corner flies the view to the preview's card, and puts the focus on it. `In` is greyed out on a card that no dependency edge enters, and `Out` on a card that none leaves.
 
 A search, a wikilink or a preview's Go to card moves the focus to a card that may sit far away. The view then flies there: it zooms out as it pans, and back in as it lands, so that the way from one card to the other stays in sight. A flight takes 0.5 to 1.5 seconds, longer for a longer way. A press on the board, a wheel or a zoom button stops it where it is. When the system asks for reduced motion, the view jumps to the card at once.
 
