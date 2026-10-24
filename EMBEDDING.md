@@ -53,7 +53,7 @@ Put the board's element and the script that mounts it into the post:
 - `attachments: 'assets'` names the same folder as the third argument of `sync-vault.sh`. Leave it out when you left that argument out.
 - A post shows one board. A second `mount` on the same page fails.
 - A click on a note card's title, on its `</>` icon, or on a wikilink to a note without a card shows the note inside the board, over the cards. The ← button above the note goes back to the cards.
-- Over the board, the mouse wheel and a two-finger trackpad swipe scroll the post, as they do anywhere else on it. Ctrl or ⌘ with the wheel, or a pinch, zooms the board, and a drag on its background pans it. Alt with the wheel or the pinch makes the text on the board larger or smaller. The wheel scrolls a card only after a click on the card.
+- Over the board, the mouse wheel and a two-finger trackpad swipe scroll the post, as they do anywhere else on it. Ctrl or ⌘ with the wheel, or a pinch, zooms the board, and a drag on its background pans it. Alt with the wheel or the pinch makes the text on the board larger or smaller. The wheel scrolls a card only after a click on the card. Space enlarges the focused card only while the pointer is over the board, and is left to the post anywhere else.
 - Hugo drops raw HTML from Markdown unless the site config sets `markup.goldmark.renderer.unsafe = true`. Jekyll and Hexo keep it.
 
 ## Step 4: set the opening view

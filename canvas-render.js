@@ -92,6 +92,14 @@ const MIN_TEXT_SCALE = 0.25
 const MAX_TEXT_SCALE = 4
 const TEXT_SCALE_STEP = 2 ** (1 / 7)
 
+/**
+ * An enlarged card is at least as large as the same card in Wide: when the
+ * room right of or below its corner is smaller, the card moves left or up.
+ * It stays ENLARGED_MARGIN clear of the board's edges and of the controls.
+ */
+const ENLARGED_MIN_SIZE = CARD_SIZES.wide
+const ENLARGED_MARGIN = 16
+
 /** Wheel delta that doubles the zoom, divided by ln 2. Larger means gentler. */
 const ZOOM_WHEEL_SENSITIVITY = 400
 
@@ -198,6 +206,7 @@ const backgroundEl = boardFragment.getElementById('background')
 const canvasEl = boardFragment.getElementById('canvas')
 const edgesEl = boardFragment.getElementById('edges')
 const statusEl = boardFragment.getElementById('status')
+const controlsEl = boardFragment.querySelector('.canvas-controls')
 const zoomInEl = boardFragment.getElementById('zoom-in')
 const zoomOutEl = boardFragment.getElementById('zoom-out')
 const zoomResetEl = boardFragment.getElementById('zoom-reset')
@@ -1084,6 +1093,8 @@ let shownZoomLabel = ''
 
 function applyView() {
   canvasEl.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`
+  // How large a card is drawn on screen, which a card's enlarge button undoes to keep one size.
+  canvasEl.style.setProperty('--zoom', view.zoom)
 
   // Dots closer than MIN_DOT_SPACING run together into a flat grey, so a
   // zoomed-out board draws every second, fourth, … dot instead.
@@ -1097,6 +1108,7 @@ function applyView() {
   backgroundEl.style.backgroundPosition = `${tileX}px ${tileY}px`
 
   scheduleViewUrl()
+  placeEnlargedCard()
 
   const zoomLabel = `${Math.round(view.zoom * 100)}%`
   if (zoomLabel === shownZoomLabel) return
@@ -1208,6 +1220,8 @@ function focusOnPress(target) {
 function focusCard(cardEl) {
   if (cardEl === focusedCardEl) return
 
+  // Only the focused card is ever enlarged, so it goes back as the focus leaves it.
+  restoreEnlargedCard()
   if (focusedCardEl !== null) delete focusedCardEl.dataset.focused
   focusedCardEl = cardEl
   if (cardEl !== null) cardEl.dataset.focused = 'true'
@@ -1230,9 +1244,10 @@ function wheelScrollsCard(target) {
 }
 
 /**
- * Card content scrolls and selects text, a card title is a link, and the
- * controls are buttons: a press on any of them neither pans the viewport nor
- * drags the card it belongs to.
+ * Card content scrolls and selects text, a card title is a link, the controls
+ * and a card's enlarge button are buttons, and an enlarged card is there to be
+ * read: a press on any of them neither pans the viewport nor drags the card it
+ * belongs to.
  *
  * Leaving the controls out of this would make them unclickable rather than
  * merely draggable: the pan captures the pointer, capture retargets the mouse
@@ -1240,7 +1255,8 @@ function wheelScrollsCard(target) {
  */
 function isInteractiveTarget(target) {
   if (!(target instanceof Element)) return false
-  return target.closest('.canvas-node-content, .canvas-node-title-link, .canvas-controls') !== null
+  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-enlarge, .canvas-node[data-enlarged="true"], .canvas-controls'
+  return target.closest(interactive) !== null
 }
 
 function installViewportControls() {
@@ -1323,9 +1339,11 @@ function installViewportControls() {
 
   // A resized window refits the view, unless the reader has moved it since the
   // fit; a moved view keeps its corner, so the address bar takes its new centre.
+  // An enlarged card takes the room the board has now.
   const observer = new ResizeObserver(() => {
     refitView()
     scheduleViewUrl()
+    placeEnlargedCard()
   })
   observer.observe(wrapperEl)
 }
@@ -1776,6 +1794,11 @@ const observedNodes = new WeakMap()
 const cardSizeObserver = new ResizeObserver(entries => {
   const resized = []
   for (const entry of entries) {
+    // An enlarged card keeps the box it has on the board, and only its place on screen follows its new size.
+    if (entry.target === enlargedCardEl) {
+      placeEnlargedCard()
+      continue
+    }
     const node = observedNodes.get(entry.target)
     const changed = recordCardSize(node)
     if (changed) resized.push(node)
@@ -1805,6 +1828,8 @@ function markCardSizeControl(sizeName) {
  * and brings the edges, the layer and the fit along with it.
  */
 function applyCardSize(sizeName) {
+  // An enlarged card goes back first, so that its box takes the new size.
+  restoreEnlargedCard()
   config.cardSize = sizeName
   localStorage.setItem(CARD_SIZE_STORAGE_KEY, sizeName)
   markCardSizeControl(sizeName)
@@ -1835,6 +1860,197 @@ function installCardSizeControl() {
     // Pressing the size already in force puts cards resized by hand back under it.
     el.addEventListener('click', () => applyCardSize(el.dataset.cardSize))
   }
+}
+
+// ------------------------------------------------------------- enlarged card
+
+/** The card drawn whole over the board, or null, and the inline style it has on the board. */
+let enlargedCardEl = null
+let enlargedCardStyle = ''
+
+/**
+ * Draws a card whole, over the board, at a size that can be read: at 100%, or
+ * at the board's zoom when that is larger. Its box in the node data stays the
+ * one it has on the board, so its edges and the fit stay where they are.
+ */
+function enlargeCard(cardEl) {
+  if (cardEl === enlargedCardEl) return
+  restoreEnlargedCard()
+
+  enlargedCardEl = cardEl
+  enlargedCardStyle = cardEl.style.cssText
+  cardEl.dataset.enlarged = 'true'
+  cardEl.querySelector('.canvas-node-enlarge').setAttribute('aria-pressed', 'true')
+  placeEnlargedCard()
+}
+
+/**
+ * Sizes the enlarged card to its content, from its own box on the board up to
+ * the room right of and below the top-left corner the board draws it at. Where
+ * that room is smaller than the same card in Wide, the card moves left or up,
+ * only as far as it takes to be that large. The enlarge button stays where the
+ * board draws it, so that a second press in the same place puts the card back.
+ * Sizes are in the enlarged card's own pixels, which the card scales from the
+ * board's zoom to its own.
+ */
+function placeEnlargedCard() {
+  if (enlargedCardEl === null) return
+
+  const cardEl = enlargedCardEl
+  const node = observedNodes.get(cardEl)
+  const cardZoom = Math.max(view.zoom, 1)
+  // The card on the board, in the enlarged card's pixels from the board's top-left corner.
+  const boxX = (view.x + node.x * view.zoom) / cardZoom
+  const boxY = (view.y + node.y * view.zoom) / cardZoom
+  const boxWidth = node.width * view.zoom / cardZoom
+  const boxHeight = node.height * view.zoom / cardZoom
+
+  // The room inside the board, ENLARGED_MARGIN on screen clear of its edges and of the controls.
+  const margin = ENLARGED_MARGIN / cardZoom
+  const roomRight = wrapperEl.getBoundingClientRect().width / cardZoom - margin
+  const roomBottom = controlsEl.offsetTop / cardZoom - margin
+  // As large as the room, but never smaller than the card on the board, so that it covers the button.
+  const maxWidth = Math.max(roomRight - margin, boxWidth)
+  const maxHeight = Math.max(roomBottom - margin, boxHeight)
+
+  // The room right of and below the card's corner, but at least the room of the same card in Wide.
+  const cornerWidth = Math.max(roomRight - boxX, ENLARGED_MIN_SIZE.width, boxWidth)
+  const cornerHeight = Math.max(roomBottom - boxY, ENLARGED_MIN_SIZE.maxHeight, boxHeight)
+
+  const wantedWidth = Math.max(node.width, ENLARGED_MIN_SIZE.width)
+  const width = Math.min(wantedWidth, cornerWidth, maxWidth)
+  const heightCap = Math.min(cornerHeight, maxHeight)
+  cardEl.style.width = `${width}px`
+  // An iframe has no height of its own, so a card holding one takes all the room it has.
+  cardEl.style.height = holdsEmbed(node) ? `${heightCap}px` : 'auto'
+  cardEl.style.minHeight = `${boxHeight}px`
+  cardEl.style.maxHeight = `${heightCap}px`
+  // offsetHeight rounds to whole pixels, so that it can pass the cap by a fraction.
+  const height = Math.min(cardEl.offsetHeight, heightCap)
+
+  const shiftX = enlargedShift(boxX, width, boxWidth, roomRight)
+  const shiftY = enlargedShift(boxY, height, boxHeight, roomBottom)
+  cardEl.style.transform = `scale(${cardZoom / view.zoom}) translate(${-shiftX}px, ${-shiftY}px)`
+  cardEl.style.setProperty('--zoom', cardZoom)
+  // Moves the button from the enlarged card's top-right corner back to the board card's.
+  cardEl.style.setProperty('--enlarge-top', `${shiftY}px`)
+  cardEl.style.setProperty('--enlarge-right', `${width - boxWidth - shiftX}px`)
+}
+
+/**
+ * How far an enlarged card moves left or up from its box on the board, along
+ * one axis: as far as it takes to end at `roomEnd`, but never so far that it
+ * stops covering that box, where its enlarge button stays.
+ */
+function enlargedShift(boxStart, size, boxSize, roomEnd) {
+  const overflow = boxStart + size - roomEnd
+  const slack = size - boxSize
+  return Math.max(0, Math.min(overflow, slack))
+}
+
+/**
+ * Puts the enlarged card back in its box on the board. It snaps back rather
+ * than easing out of its enlarged size, as `cardSizeObserver` would carry its
+ * edges along through every frame of the easing.
+ */
+function restoreEnlargedCard() {
+  if (enlargedCardEl === null) return
+
+  const cardEl = enlargedCardEl
+  enlargedCardEl = null
+  cardEl.style.cssText = enlargedCardStyle
+  // Lays the card out at its own size while `data-enlarged` still turns its transition off.
+  void cardEl.offsetHeight
+  delete cardEl.dataset.enlarged
+  cardEl.querySelector('.canvas-node-enlarge').setAttribute('aria-pressed', 'false')
+}
+
+/** lucide `maximize-2`: the card opens out to its whole content. */
+const ENLARGE_ICON = '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/>'
+
+/**
+ * The button in a card's top-right corner enlarges the card until it is pressed
+ * again, or until the focus leaves the card. It is how a touch screen, with no
+ * Space to hold, reads a card whole.
+ */
+function installNodeEnlarge(el) {
+  const buttonEl = document.createElement('button')
+  buttonEl.className = 'canvas-node-enlarge'
+  buttonEl.type = 'button'
+  buttonEl.title = 'Show the whole card, or hold Space'
+  buttonEl.setAttribute('aria-pressed', 'false')
+  buttonEl.appendChild(createIcon(ENLARGE_ICON))
+  el.appendChild(buttonEl)
+
+  // A pressed button would keep the keyboard focus, and a later Space would press it again.
+  buttonEl.addEventListener('pointerdown', event => event.preventDefault())
+  buttonEl.addEventListener('click', () => {
+    if (enlargedCardEl === el) restoreEnlargedCard()
+    else enlargeCard(el)
+  })
+}
+
+/** True for a form field or for editable text, where Space types or toggles. */
+function isField(el) {
+  if (!(el instanceof HTMLElement)) return false
+  return el.isContentEditable || el.matches('input, textarea, select')
+}
+
+/**
+ * Whether a press of Space enlarges the focused card. On a board mounted in
+ * another page, Space scrolls that page, so the board takes it only while the
+ * pointer is over the board. A form field keeps its Space, and so does a file
+ * shown over the board.
+ */
+function spaceEnlarges(event, pointerOverBoard) {
+  if (focusedCardEl === null) return false
+  if (focusedCardEl.dataset.type === 'group') return false
+  if (wrapperEl.inert) return false
+  if (!config.ownsPage && !pointerOverBoard) return false
+
+  const hasModifier = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
+  if (hasModifier) return false
+  // A key pressed inside the board names the board's host as its target.
+  const target = event.composedPath()[0]
+  return !isField(target)
+}
+
+/** Holding Space enlarges the focused card, and letting it go puts the card back. */
+function installEnlargeKey() {
+  let pointerOverBoard = false
+  let spaceHeld = false
+  wrapperEl.addEventListener('pointerenter', () => {
+    pointerOverBoard = true
+  })
+  wrapperEl.addEventListener('pointerleave', () => {
+    pointerOverBoard = false
+  })
+
+  document.addEventListener('keydown', event => {
+    if (event.code !== 'Space') return
+    if (!spaceEnlarges(event, pointerOverBoard)) return
+
+    // Space would scroll the page, or press the button that has the keyboard focus.
+    event.preventDefault()
+    if (event.repeat) return
+    spaceHeld = true
+    enlargeCard(focusedCardEl)
+  })
+
+  document.addEventListener('keyup', event => {
+    if (event.code !== 'Space') return
+    if (!spaceHeld) return
+
+    spaceHeld = false
+    event.preventDefault()
+    restoreEnlargedCard()
+  })
+
+  // Space let go in another window never reaches this one.
+  window.addEventListener('blur', () => {
+    spaceHeld = false
+    restoreEnlargedCard()
+  })
 }
 
 // -------------------------------------------------------------------- search
@@ -2022,6 +2238,8 @@ function drawCanvas(data) {
     layout.elements.set(node.id, el)
     installNodeDrag(node, el)
     installNodeResize(node, el)
+    // A group is all frame, with nothing to read.
+    if (node.type !== 'group') installNodeEnlarge(el)
     observeCardSize(el, node)
     canvasEl.appendChild(el)
   }
@@ -2252,6 +2470,7 @@ async function main(params) {
   installCardSizeControl()
   installSearch()
   installGridSnapControl()
+  installEnlargeKey()
 }
 
 /** Appends `el`, a `<link>` or a `<script>`, to `parent`, and resolves once the file at `url` has loaded. */

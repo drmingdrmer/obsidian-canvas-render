@@ -87,6 +87,8 @@
   /* How many times its own size the text is drawn, which `applyTextScale` sets.
      Every font size on the board is multiplied by it, and nothing else is. */
   --text-scale: 1;
+  /* How large a card is drawn on screen, which `applyView` sets to the zoom. */
+  --zoom: 1;
 }
 
 .canvas-edges {
@@ -182,6 +184,62 @@
 .canvas-node[data-focused="true"] {
   border-color: var(--text-accent);
   box-shadow: 0 0 0 1px var(--text-accent), var(--canvas-shadow);
+}
+
+/* A card that Space or its button enlarged, drawn over the other cards, where
+   `placeEnlargedCard` sizes and places it. It snaps in and out: easing would
+   drag the edges of a content-sized card along with it. Its box on the board
+   stays as it was, so it has nothing to resize. */
+.canvas-node[data-enlarged="true"] {
+  z-index: 3;
+  transform-origin: 0 0;
+  transition: none;
+  box-shadow: 0 0 0 1px var(--text-accent), 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.canvas-node[data-enlarged="true"] .canvas-node-resize {
+  display: none;
+}
+
+/* The button in a card's top-right corner that enlarges the card. It stays one
+   size on screen at any zoom, so it shows on the focused card alone: on a board
+   zoomed out, it would cover much of any small card the pointer crossed.
+   Its corner sits on the card's outer corner, past the 1 px border, and is
+   moved 4 px inwards on screen. While the card is enlarged, `--enlarge-top` and
+   `--enlarge-right` keep it where the card's corner is on the board. */
+.canvas-node-enlarge {
+  position: absolute;
+  top: calc(var(--enlarge-top, 0px) - 1px);
+  right: calc(var(--enlarge-right, 0px) - 1px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  visibility: hidden;
+  transform: scale(calc(1 / var(--zoom))) translate(-4px, 4px);
+  transform-origin: 100% 0;
+}
+
+.canvas-node[data-focused="true"] .canvas-node-enlarge {
+  visibility: visible;
+}
+
+.canvas-node-enlarge:hover,
+.canvas-node-enlarge[aria-pressed="true"] {
+  color: var(--text-accent);
+}
+
+.canvas-node-enlarge .canvas-node-title-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 1;
 }
 
 .canvas-node[data-colored="true"] {

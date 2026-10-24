@@ -103,6 +103,33 @@ test('a plain wheel over the focused card of a mounted board scrolls the card', 
   expect(scrollY).toBe(0)
 })
 
+test('Space enlarges the focused card of a mounted board only while the pointer is over the board', async ({ page }) => {
+  await openPost(page)
+  const card = page.locator('.canvas-node').first()
+  await card.locator('.canvas-node-content').click()
+  // Added after the board's own listener, so it sees whether the board took the key.
+  await page.evaluate(() => {
+    document.addEventListener('keydown', event => {
+      post.spaceTaken = event.defaultPrevented
+    })
+  })
+
+  // Left of the board, which starts 100 px in.
+  await page.mouse.move(50, 400)
+  await page.keyboard.press('Space')
+  const takenOffBoard = await page.evaluate(() => post.spaceTaken)
+  expect(takenOffBoard).toBe(false)
+  await expect(card).not.toHaveAttribute('data-enlarged')
+
+  await card.locator('.canvas-node-content').hover()
+  await page.keyboard.down('Space')
+  await expect(card).toHaveAttribute('data-enlarged', 'true')
+  const takenOnBoard = await page.evaluate(() => post.spaceTaken)
+  expect(takenOnBoard).toBe(true)
+  await page.keyboard.up('Space')
+  await expect(card).not.toHaveAttribute('data-enlarged')
+})
+
 test('a mounted board zooms around the pointer, and keeps its view out of the address', async ({ page }) => {
   await openPost(page)
   const card = page.locator('.canvas-node').first()
