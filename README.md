@@ -21,7 +21,7 @@ A text card whose first line is a paragraph with more text under it draws that l
 
 Every group is drawn behind every card. JSON Canvas stacks nodes in the order the file lists them, which would let a group listed after a card cover that card; this is a deliberate difference too.
 
-Block-reference subpaths `#^blockid` render the whole document. A `[[wikilink]]` to a note that has a card on the board fits the view to that card; any other opens the note on its own.
+Block-reference subpaths `#^blockid` render the whole document. A `[[wikilink]]` to a note that has a card on the board shows that card in a preview beside the link. Go to card in the preview, or Alt+click on the link, flies the view to the card. Any other wikilink opens the note on its own.
 
 ## License
 
