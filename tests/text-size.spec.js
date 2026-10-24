@@ -49,9 +49,10 @@ test('the text buttons resize every text on the board, and leave the cards, the 
   const sizesBefore = await textSizes(page)
   expect(sizesBefore).toEqual({ title: 16, header: 16, content: 15, groupLabel: 15, edgeLabel: 13, edgeLabelHalo: 5 })
 
-  // Two steps of √2 make 2.
-  await page.locator('#text-larger').click()
-  await page.locator('#text-larger').click()
+  // Seven steps make 2.
+  for (let i = 0; i < 7; i += 1) {
+    await page.locator('#text-larger').click()
+  }
   await expect(page.locator('#text-reset')).toHaveText('2×')
   const sizesLarger = await textSizes(page)
   expect(sizesLarger).toEqual({ title: 32, header: 32, content: 30, groupLabel: 30, edgeLabel: 26, edgeLabelHalo: 10 })
@@ -59,38 +60,42 @@ test('the text buttons resize every text on the board, and leave the cards, the 
   expect(layoutLarger).toEqual(layoutBefore)
   await expect(page.locator('#zoom-reset')).toHaveText('100%')
 
-  await page.locator('#text-smaller').click()
-  await page.locator('#text-smaller').click()
-  await page.locator('#text-smaller').click()
-  await expect(page.locator('#text-reset')).toHaveText('0.71×')
+  for (let i = 0; i < 8; i += 1) {
+    await page.locator('#text-smaller').click()
+  }
+  await expect(page.locator('#text-reset')).toHaveText('0.91×')
   const layoutSmaller = await layoutState(page)
   expect(layoutSmaller).toEqual(layoutBefore)
 })
 
-test('the text buttons step by √2, from 0.25× to 4×, and the label resets to 1×', async ({ page }) => {
+test('the text buttons step by about 10%, from 0.25× to 4×, and the label resets to 1×', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
   const label = page.locator('#text-reset')
   const larger = page.locator('#text-larger')
   const smaller = page.locator('#text-smaller')
   await expect(label).toHaveText('1×')
 
-  // Four steps reach 4, and a fifth stays there.
+  // Fourteen steps reach 4, and a fifteenth stays there.
   const raised = []
-  for (let i = 0; i < 5; i += 1) {
+  for (let i = 0; i < 15; i += 1) {
     await larger.click()
     raised.push(await label.textContent())
   }
-  expect(raised).toEqual(['1.4×', '2×', '2.8×', '4×', '4×'])
+  expect(raised).toEqual(['1.1×', '1.2×', '1.3×', '1.5×', '1.6×', '1.8×', '2×', '2.2×', '2.4×', '2.7×', '3×', '3.3×', '3.6×', '4×', '4×'])
   const highest = await page.evaluate(() => config.textScale)
   expect(highest).toBe(4)
 
-  // Eight steps reach 0.25, and a ninth stays there.
+  // Twenty-eight steps reach 0.25, passing 1 on the way, and a twenty-ninth
+  // stays there.
   const lowered = []
-  for (let i = 0; i < 9; i += 1) {
+  for (let i = 0; i < 29; i += 1) {
     await smaller.click()
     lowered.push(await label.textContent())
   }
-  expect(lowered).toEqual(['2.8×', '2×', '1.4×', '1×', '0.71×', '0.5×', '0.35×', '0.25×', '0.25×'])
+  expect(lowered).toEqual([
+    '3.6×', '3.3×', '3×', '2.7×', '2.4×', '2.2×', '2×', '1.8×', '1.6×', '1.5×', '1.3×', '1.2×', '1.1×', '1×',
+    '0.91×', '0.82×', '0.74×', '0.67×', '0.61×', '0.55×', '0.5×', '0.45×', '0.41×', '0.37×', '0.34×', '0.3×', '0.28×', '0.25×', '0.25×',
+  ])
   const lowest = await page.evaluate(() => config.textScale)
   expect(lowest).toBe(0.25)
 
@@ -125,8 +130,9 @@ test('a card that Wide sizes by its content grows with its text, and its edge fo
   const card = page.locator('.canvas-node').first()
   const heightBefore = await card.evaluate(el => el.offsetHeight)
 
-  await page.locator('#text-larger').click()
-  await page.locator('#text-larger').click()
+  for (let i = 0; i < 7; i += 1) {
+    await page.locator('#text-larger').click()
+  }
   const heightAfter = await card.evaluate(el => el.offsetHeight)
   expect(heightAfter).toBeGreaterThan(heightBefore)
   await expect.poll(async () => (await boxes(page)).a).toEqual([0, 0, 520, heightAfter])
@@ -144,8 +150,9 @@ test('the address bar keeps the text size, and opening that address brings it ba
   const fitted = await page.evaluate(() => ({ ...view }))
 
   // The view is still the one fitted to the whole board, so the address names no `at`.
-  await page.locator('#text-larger').click()
-  await page.locator('#text-larger').click()
+  for (let i = 0; i < 7; i += 1) {
+    await page.locator('#text-larger').click()
+  }
   await expect(page).toHaveURL(`${board}&text=2`)
 
   await openBoard(page, { nodes }, {}, '&text=2')

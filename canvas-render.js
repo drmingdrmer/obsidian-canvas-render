@@ -85,12 +85,12 @@ const FIT_MAX_ZOOM = 1
 /**
  * The text size draws the text on the board from MIN_TEXT_SCALE to
  * MAX_TEXT_SCALE times its own size, in cards of the same size. A text button
- * multiplies it by TEXT_SCALE_STEP, which halves or doubles the text a card
- * has room for.
+ * multiplies it by TEXT_SCALE_STEP, about 1.1. Seven steps double the text, so
+ * from 1 the buttons reach either end in 14 steps and come back to 1 from it.
  */
 const MIN_TEXT_SCALE = 0.25
 const MAX_TEXT_SCALE = 4
-const TEXT_SCALE_STEP = Math.SQRT2
+const TEXT_SCALE_STEP = 2 ** (1 / 7)
 
 /** Wheel delta that doubles the zoom, divided by ln 2. Larger means gentler. */
 const ZOOM_WHEEL_SENSITIVITY = 400
