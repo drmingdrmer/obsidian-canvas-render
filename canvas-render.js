@@ -122,6 +122,9 @@ const FLIGHT_MS_PER_UNIT = 400
 const FLIGHT_MIN_MS = 500
 const FLIGHT_MAX_MS = 1500
 
+/** How many cards the History list keeps, unless the `history` parameter names another number. */
+const DEFAULT_HISTORY_LENGTH = 100
+
 /** Wheel delta that doubles the zoom, divided by ln 2. Larger means gentler. */
 const ZOOM_WHEEL_SENSITIVITY = 400
 
@@ -213,7 +216,7 @@ const BOARD_MARKUP = `
 
   <div class="canvas-history" id="history" hidden>
     <div class="canvas-history-title">History</div>
-    <div id="history-list"></div>
+    <div class="canvas-history-list" id="history-list"></div>
   </div>
 </div>
 
@@ -305,6 +308,7 @@ const config = {
   cardSize: 'actual',
   snapToGrid: false,
   textScale: 1,
+  historyLength: DEFAULT_HISTORY_LENGTH,
   ownsPage: true,
 }
 
@@ -2336,8 +2340,19 @@ function installCardPreview() {
 
 // ------------------------------------------------------------- focus history
 
-/** The cards the focus has been on, the latest first, each once. */
+/** The cards the focus has been on, the latest first, each once, at most `config.historyLength` of them. */
 const focusHistory = []
+
+/** The number of cards the `history` parameter names, or DEFAULT_HISTORY_LENGTH without one. */
+function requestedHistoryLength(params) {
+  const value = params.get('history')
+  if (value === null) return DEFAULT_HISTORY_LENGTH
+
+  const historyLength = Number(value)
+  const isCount = Number.isInteger(historyLength) && historyLength >= 1
+  if (!isCount) throw new Error(`the history parameter accepts a whole number from 1 up, got ${value}`)
+  return historyLength
+}
 
 /**
  * Puts a card that takes the focus first in the history. The list is drawn
@@ -2350,6 +2365,8 @@ function recordFocus(cardEl) {
     const index = focusHistory.indexOf(node)
     if (index >= 0) focusHistory.splice(index, 1)
     focusHistory.unshift(node)
+    // The oldest cards past the length drop off the end.
+    focusHistory.splice(config.historyLength)
   }
   drawFocusHistory()
 }
@@ -2373,6 +2390,8 @@ function drawFocusHistory() {
     entryEls.push(emptyEl)
   }
   historyListEl.replaceChildren(...entryEls)
+  // A long list shows its top, where the card that holds the focus is.
+  historyListEl.scrollTop = 0
 }
 
 /** Shows or hides the history, and remembers the choice. */
@@ -2794,6 +2813,7 @@ async function main(params) {
   config.cardSize = preferredCardSize(params)
   const centre = requestedCentre(params)
   applyTextScale(requestedTextScale(params))
+  config.historyLength = requestedHistoryLength(params)
 
   showStatus(`Loading ${canvasPath} …`)
   const response = await fetchFile(encodePath(canvasPath), canvasPath)

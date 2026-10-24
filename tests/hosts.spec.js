@@ -68,6 +68,9 @@ const REFUSED_QUERIES = [
   ['text=5', 'the text parameter accepts a number from 0.25 to 4, got 5'],
   ['text=0.2', 'the text parameter accepts a number from 0.25 to 4, got 0.2'],
   ['text=x', 'the text parameter accepts a number from 0.25 to 4, got x'],
+  ['history=0', 'the history parameter accepts a whole number from 1 up, got 0'],
+  ['history=2.5', 'the history parameter accepts a whole number from 1 up, got 2.5'],
+  ['history=x', 'the history parameter accepts a whole number from 1 up, got x'],
 ]
 
 // Runs in the page: 'ok' when the canvas parameter may hold the path, or else

@@ -700,23 +700,36 @@
   position: absolute;
   top: 16px;
   right: 16px;
+  display: flex;
+  flex-direction: column;
   width: 240px;
   max-width: calc(100cqw - 32px);
   max-height: min(400px, calc(100cqh - 140px));
   padding: 4px;
-  overflow-y: auto;
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   background: var(--background-primary);
   box-shadow: var(--canvas-shadow);
-  overscroll-behavior: contain;
+}
+
+/* `display: flex` above would otherwise outrank the browser's own rule for `hidden`. */
+.canvas-history[hidden] {
+  display: none;
 }
 
 .canvas-history-title {
+  flex: none;
   padding: 4px 8px;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
+}
+
+/* A list longer than the pane scrolls under the title, which stays in place. */
+.canvas-history-list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* The card that holds the focus. */

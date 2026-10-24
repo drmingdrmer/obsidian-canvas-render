@@ -39,6 +39,7 @@ Any static host serves the repository as-is. On GitHub Pages, **keep the `.nojek
 | `at` | Open the board on `<x>,<y>,<zoom>`: that canvas point at the centre of the window, at that zoom, where 1 is 100% |
 | `focus` | Open the board fitted to the card with this id, with the focus on it |
 | `text` | Draw the text on the board this many times its own size, from 0.25 to 4, in cards of the same size. Defaults to 1 |
+| `history` | How many cards the History list keeps, the latest ones. Defaults to 100 |
 
 `canvas`, `vault`, `note` and `raw` each take a path relative to the page, or an `https://` URL on one of the hosts in `REMOTE_HOSTS` at the top of `canvas-render.js` — `raw.githubusercontent.com` by default. Every other host is refused: a note is stripped of script before it is drawn, but the rest of it still appears as this page's own content. The same rule holds for the file each file card names, and for `attachments`, once the vault root is put in front of them. A card whose file leads to any other host shows the refusal instead.
 
@@ -71,7 +72,12 @@ The host has to send `Access-Control-Allow-Origin`, which `raw.githubusercontent
 <script type="module">
   import { mount } from '/obsidian-canvas-render/canvas-render.js'
 
-  mount(document.getElementById('board'), { canvas: 'boards/plan.canvas', attachments: 'assets' })
+  mount(document.getElementById('board'), {
+    canvas: 'boards/plan.canvas',
+    attachments: 'assets',
+    // The History list keeps the last 20 cards rather than 100.
+    history: 20,
+  })
 </script>
 ```
 
@@ -122,7 +128,7 @@ Every card keeps its stored position through all of this, so a card that grows c
 
 `Grid` lands a dragged card on the 20 px grid the background dots mark out, so cards line up with each other without being nudged into place. The card under the pointer is the one that aligns, and a group's frame carries its contents along at their own offsets. A resize grip aligns the corner it drags, which is the edge that has to meet the neighbours — a card's own origin may sit off the grid.
 
-`History` shows, in the board's top-right corner, the cards the focus has been on, the latest first and each once. The card that holds the focus is marked. A click on one flies the view back to it. The list starts empty on each visit.
+`History` shows, in the board's top-right corner, the cards the focus has been on, the latest first and each once. The card that holds the focus is marked. A click on one flies the view back to it. The list keeps the last 100 cards, or as many as the `history` parameter names, and a list longer than the pane scrolls under its title. The list starts empty on each visit.
 
 The card size, the grid, the History button and the theme are all remembered across visits. Until the theme toggle is pressed, the theme follows the system's light or dark setting.
 

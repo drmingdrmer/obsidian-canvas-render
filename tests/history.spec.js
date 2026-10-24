@@ -7,6 +7,13 @@ const BOARD = {
   nodes: [textCard('a', 0, 0, 'Alpha'), textCard('b', 600, 0, 'Beta'), textCard('c', 1200, 0, 'Gamma')],
 }
 
+// Twenty cards in a 4 × 5 grid. At zoom 0.5, with the canvas point (475, 350)
+// at the centre of the 1280 × 720 window, the grid spans x = 402 to 877 and
+// y = 185 to 535: clear of the history in the top-right corner.
+const GRID_BOARD = {
+  nodes: Array.from({ length: 20 }, (_, i) => textCard(`n${i}`, (i % 4) * 250, Math.floor(i / 4) * 150, `Card ${i}`)),
+}
+
 // Each history entry's aria-current, in list order.
 function currentMarks(page) {
   return page.locator('.canvas-history-entry').evaluateAll(els => els.map(el => el.getAttribute('aria-current')))
@@ -54,6 +61,52 @@ test('the card a link opens on comes first in the history', async ({ page }) => 
   await expect(page.locator('.canvas-history-entry')).toHaveText(['Beta'])
   const marks = await currentMarks(page)
   expect(marks).toEqual(['true'])
+})
+
+test('the history keeps as many cards as the history parameter names, dropping the oldest', async ({ page }) => {
+  await openBoard(page, BOARD, {}, '&history=2')
+  await page.locator('#history-toggle').click()
+  const cards = page.locator('.canvas-node')
+  await cards.nth(0).click()
+  await cards.nth(1).click()
+  await cards.nth(2).click()
+
+  await expect(page.locator('.canvas-history-entry')).toHaveText(['Gamma', 'Beta'])
+})
+
+test('without a history parameter, the history keeps 100 cards', async ({ page }) => {
+  await openBoard(page, BOARD)
+  const historyLength = await page.evaluate(() => config.historyLength)
+  expect(historyLength).toBe(100)
+})
+
+test('a list longer than the pane scrolls under its title, and shows its top again when the focus moves', async ({ page }) => {
+  await openBoard(page, GRID_BOARD, {}, '&at=475,350,0.5')
+  await page.locator('#history-toggle').click()
+  const cards = page.locator('.canvas-node')
+  for (let i = 0; i < 20; i += 1) await cards.nth(i).click()
+
+  const entries = page.locator('.canvas-history-entry')
+  await expect(entries).toHaveCount(20)
+  // The pane stops at 400 px, and the list scrolls inside it.
+  const pane = await page.locator('#history').boundingBox()
+  expect(pane.height).toBe(400)
+  const list = page.locator('#history-list')
+  const overflows = await list.evaluate(el => el.scrollHeight > el.clientHeight)
+  expect(overflows).toBe(true)
+
+  const title = page.locator('.canvas-history-title')
+  const titleBox = await title.boundingBox()
+  await list.hover()
+  await page.mouse.wheel(0, 1000)
+  await expect.poll(() => list.evaluate(el => el.scrollTop)).toBeGreaterThan(0)
+  const titleBoxAfter = await title.boundingBox()
+  expect(titleBoxAfter).toEqual(titleBox)
+
+  await cards.nth(0).click()
+  const scrollTop = await list.evaluate(el => el.scrollTop)
+  expect(scrollTop).toBe(0)
+  await expect(entries.nth(0)).toHaveText('Card 0')
 })
 
 test('the History button shows and hides the list, and a reload keeps the choice', async ({ page }) => {
