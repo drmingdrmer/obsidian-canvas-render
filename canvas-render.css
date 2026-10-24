@@ -607,8 +607,8 @@
 }
 
 /* The bar carries unrelated controls: the search, the view's zoom, the size of
-   every card, the grid and the theme. A rule marks where one ends and the next
-   begins. */
+   every card, the grid, the history and the theme. A rule marks where one ends
+   and the next begins. */
 .canvas-control-divider {
   width: 1px;
   margin: 6px 4px;
@@ -658,7 +658,8 @@
   overscroll-behavior: contain;
 }
 
-.canvas-search-result {
+.canvas-search-result,
+.canvas-history-entry {
   display: block;
   width: 100%;
   padding: 6px 8px;
@@ -676,15 +677,52 @@
 }
 
 .canvas-search-result:hover,
-.canvas-search-result:focus-visible {
+.canvas-search-result:focus-visible,
+.canvas-history-entry:hover,
+.canvas-history-entry:focus-visible {
   background: var(--background-modifier-hover);
   outline: none;
 }
 
-.canvas-search-empty {
+.canvas-search-empty,
+.canvas-history-empty {
   padding: 6px 8px;
   color: var(--text-faint);
   font-size: 13px;
+}
+
+/* ---------- focus history ---------- */
+
+/* The cards the focus has been on, in the board's top-right corner, clear of
+   the bar at the bottom even when a narrow window wraps it. Its entries look
+   like the search results. */
+.canvas-history {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 240px;
+  max-width: calc(100cqw - 32px);
+  max-height: min(400px, calc(100cqh - 140px));
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  box-shadow: var(--canvas-shadow);
+  overscroll-behavior: contain;
+}
+
+.canvas-history-title {
+  padding: 4px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* The card that holds the focus. */
+.canvas-history-entry[aria-current="true"] {
+  color: var(--text-accent);
+  font-weight: 600;
 }
 
 /* ---------- single-file view: rendered note, or its markdown source ---------- */

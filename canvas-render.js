@@ -31,6 +31,7 @@ const DEFAULT_CANVAS_PATH = 'vault/demo.canvas'
 const THEME_STORAGE_KEY = 'canvas-render-theme'
 const CARD_SIZE_STORAGE_KEY = 'canvas-render-card-size'
 const GRID_SNAP_STORAGE_KEY = 'canvas-render-grid-snap'
+const HISTORY_STORAGE_KEY = 'canvas-render-history'
 
 /**
  * What the card-size control offers, one button each. `actual` draws every card
@@ -204,7 +205,15 @@ const BOARD_MARKUP = `
     <button class="canvas-control-item" id="grid-snap" title="Land a dragged card on the grid">Grid</button>
 
     <span class="canvas-control-divider"></span>
+    <button class="canvas-control-item" id="history-toggle" title="Show the cards the focus has been on">History</button>
+
+    <span class="canvas-control-divider"></span>
     <button class="canvas-control-item theme-toggle" title="Toggle light and dark theme">☾</button>
+  </div>
+
+  <div class="canvas-history" id="history" hidden>
+    <div class="canvas-history-title">History</div>
+    <div id="history-list"></div>
   </div>
 </div>
 
@@ -246,6 +255,9 @@ const textResetEl = boardFragment.getElementById('text-reset')
 const textLargerEl = boardFragment.getElementById('text-larger')
 const cardSizeEls = boardFragment.querySelectorAll('[data-card-size]')
 const gridSnapEl = boardFragment.getElementById('grid-snap')
+const historyToggleEl = boardFragment.getElementById('history-toggle')
+const historyEl = boardFragment.getElementById('history')
+const historyListEl = boardFragment.getElementById('history-list')
 const searchEl = boardFragment.getElementById('search')
 const searchResultsEl = boardFragment.getElementById('search-results')
 const themeToggleEls = boardFragment.querySelectorAll('.theme-toggle')
@@ -1255,16 +1267,20 @@ let focusedCardEl = null
  * take the rest of the gesture over, which is what a reader paging through a
  * board never means.
  *
- * The controls are neither: pressing one leaves the focus where the reader put it.
+ * The controls and the history are neither: pressing one leaves the focus where
+ * the reader put it.
  */
 function focusOnPress(target) {
   if (!(target instanceof Element)) return
-  if (target.closest('.canvas-controls') !== null) return
+  if (target.closest('.canvas-controls, .canvas-history') !== null) return
 
   focusCard(target.closest('.canvas-node'))
 }
 
-/** Puts the focus on a card, or on the board for null, and marks the card that holds it. */
+/**
+ * Puts the focus on a card, or on the board for null, and marks the card that
+ * holds it, on the board and in the history.
+ */
 function focusCard(cardEl) {
   if (cardEl === focusedCardEl) return
 
@@ -1273,6 +1289,7 @@ function focusCard(cardEl) {
   if (focusedCardEl !== null) delete focusedCardEl.dataset.focused
   focusedCardEl = cardEl
   if (cardEl !== null) cardEl.dataset.focused = 'true'
+  recordFocus(cardEl)
 }
 
 /** Fits the view to one card, and puts the focus on it as a press on it would. */
@@ -1419,7 +1436,7 @@ function wheelScrollsCard(target) {
  */
 function isInteractiveTarget(target) {
   if (!(target instanceof Element)) return false
-  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-enlarge, .canvas-node[data-enlarged="true"], .canvas-controls'
+  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-enlarge, .canvas-node[data-enlarged="true"], .canvas-controls, .canvas-history'
   return target.closest(interactive) !== null
 }
 
@@ -2317,6 +2334,66 @@ function installCardPreview() {
   )
 }
 
+// ------------------------------------------------------------- focus history
+
+/** The cards the focus has been on, the latest first, each once. */
+const focusHistory = []
+
+/**
+ * Puts a card that takes the focus first in the history. The list is drawn
+ * again either way: its mark follows the focus, and goes when the focus moves
+ * to the board.
+ */
+function recordFocus(cardEl) {
+  if (cardEl !== null) {
+    const node = layout.nodes.find(node => layout.elements.get(node.id) === cardEl)
+    const index = focusHistory.indexOf(node)
+    if (index >= 0) focusHistory.splice(index, 1)
+    focusHistory.unshift(node)
+  }
+  drawFocusHistory()
+}
+
+function historyEntryElement(node) {
+  const entryEl = document.createElement('button')
+  entryEl.className = 'canvas-history-entry'
+  entryEl.textContent = cardName(node) || 'Untitled'
+  const holdsFocus = layout.elements.get(node.id) === focusedCardEl
+  if (holdsFocus) entryEl.setAttribute('aria-current', 'true')
+  entryEl.addEventListener('click', () => flyToCard(node))
+  return entryEl
+}
+
+function drawFocusHistory() {
+  const entryEls = focusHistory.map(historyEntryElement)
+  if (entryEls.length === 0) {
+    const emptyEl = document.createElement('div')
+    emptyEl.className = 'canvas-history-empty'
+    emptyEl.textContent = 'No card has had the focus yet'
+    entryEls.push(emptyEl)
+  }
+  historyListEl.replaceChildren(...entryEls)
+}
+
+/** Shows or hides the history, and remembers the choice. */
+function applyHistoryPane(shown) {
+  historyEl.hidden = !shown
+  localStorage.setItem(HISTORY_STORAGE_KEY, String(shown))
+  historyToggleEl.setAttribute('aria-pressed', String(shown))
+}
+
+/**
+ * History lists, in the board's top-right corner, the cards the focus has been
+ * on; a click on one flies the view back to it.
+ */
+function installFocusHistory() {
+  drawFocusHistory()
+  applyHistoryPane(localStorage.getItem(HISTORY_STORAGE_KEY) === 'true')
+  historyToggleEl.addEventListener('click', () => applyHistoryPane(historyEl.hidden))
+  // The wheel scrolls a long list, rather than moving the board under it.
+  historyEl.addEventListener('wheel', event => event.stopPropagation())
+}
+
 // -------------------------------------------------------------------- search
 
 /** What a search result calls a card: the name or label it shows, or its first line. */
@@ -2738,6 +2815,7 @@ async function main(params) {
   installGridSnapControl()
   installEnlargeKey()
   installCardPreview()
+  installFocusHistory()
 }
 
 /** Appends `el`, a `<link>` or a `<script>`, to `parent`, and resolves once the file at `url` has loaded. */
