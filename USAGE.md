@@ -116,7 +116,7 @@ Nothing is written back to the file: a reload restores the board the `.canvas` d
 
 ## Controls
 
-The bar in the corner holds the search box, the zoom, the text size, the size of every card, the grid, the history and the theme.
+The bar in the corner holds the search box, the zoom, the text size, the size of every card, the grid, the history, In and Out, and the theme.
 
 The search box lists the cards whose name or text holds what is typed, ignoring case: a note card's file name and its note, a text card's text, a link card's URL and a group's label. Cards whose name holds it come first. Picking one, or pressing Enter for the first, flies the view to that card, fits it at 100% at most, and puts the focus on it. Escape clears the box. The view stays on that card while the window or the card changes size, until the board is moved by hand.
 
@@ -129,6 +129,8 @@ Every card keeps its stored position through all of this, so a card that grows c
 `Grid` lands a dragged card on the 20 px grid the background dots mark out, so cards line up with each other without being nudged into place. The card under the pointer is the one that aligns, and a group's frame carries its contents along at their own offsets. A resize grip aligns the corner it drags, which is the edge that has to meet the neighbours — a card's own origin may sit off the grid.
 
 `History` shows, in the board's top-right corner, the cards the focus has been on, the latest first and each once. The card that holds the focus is marked. A click on one flies the view back to it. The list keeps the last 100 cards, or as many as the `history` parameter names, and a list longer than the pane scrolls under its title. The list starts empty on each visit.
+
+`In` shows, around the last card that took the focus, a preview of each card with an edge into it, and `Out` a preview of each card it has an edge to. Each preview stands beside the side of the card that its edge meets, joined to the card by a dashed copy of the edge, and shows its card cut to 320 × 240 at most. The button in a preview's top-right corner flies the view to its card. The previews move to each card that takes the focus, and stay where they are while the focus is on the board, so the board can be panned around them. A second press of `In` or `Out` removes its previews. Both start off on each visit.
 
 The card size, the grid, the History button and the theme are all remembered across visits. Until the theme toggle is pressed, the theme follows the system's light or dark setting.
 

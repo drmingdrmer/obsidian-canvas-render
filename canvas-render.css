@@ -189,9 +189,9 @@
 /* A card that Space or its button enlarged, drawn over the other cards, where
    `placeEnlargedCard` sizes and places it. It snaps in and out: easing would
    drag the edges of a content-sized card along with it. Its box on the board
-   stays as it was, so it has nothing to resize. */
+   stays as it was, so it has nothing to resize. It covers the previews too. */
 .canvas-node[data-enlarged="true"] {
-  z-index: 3;
+  z-index: 4;
   transform-origin: 0 0;
   transition: none;
   box-shadow: 0 0 0 1px var(--text-accent), 0 8px 32px rgba(0, 0, 0, 0.25);
@@ -206,8 +206,10 @@
    zoomed out, it would cover much of any small card the pointer crossed.
    Its corner sits on the card's outer corner, past the 1 px border, and is
    moved 4 px inwards on screen. While the card is enlarged, `--enlarge-top` and
-   `--enlarge-right` keep it where the card's corner is on the board. */
-.canvas-node-enlarge {
+   `--enlarge-right` keep it where the card's corner is on the board. The button
+   that flies from a preview to its card looks the same, and always shows. */
+.canvas-node-enlarge,
+.canvas-neighbour-go {
   position: absolute;
   top: calc(var(--enlarge-top, 0px) - 1px);
   right: calc(var(--enlarge-right, 0px) - 1px);
@@ -227,22 +229,26 @@
   transform-origin: 100% 0;
 }
 
-.canvas-node[data-focused="true"] .canvas-node-enlarge {
+.canvas-node[data-focused="true"] .canvas-node-enlarge,
+.canvas-neighbour-go {
   visibility: visible;
 }
 
 .canvas-node-enlarge:hover,
-.canvas-node-enlarge[aria-pressed="true"] {
+.canvas-node-enlarge[aria-pressed="true"],
+.canvas-neighbour-go:hover {
   color: var(--text-accent);
 }
 
-.canvas-node-enlarge .canvas-node-title-icon {
+.canvas-node-enlarge .canvas-node-title-icon,
+.canvas-neighbour-go .canvas-node-title-icon {
   width: 16px;
   height: 16px;
   opacity: 1;
 }
 
-.canvas-node[data-colored="true"] {
+.canvas-node[data-colored="true"],
+.canvas-neighbour[data-colored="true"] {
   background-color: color-mix(in srgb, var(--node-color) var(--canvas-color-tint), var(--canvas-node-background));
 }
 
@@ -388,20 +394,20 @@
 }
 
 /* A group's background image, sized as its backgroundStyle names. */
-.canvas-node[data-background-style] {
+:is(.canvas-node, .canvas-neighbour)[data-background-style] {
   background-position: center;
   background-repeat: no-repeat;
 }
 
-.canvas-node[data-background-style="cover"] {
+:is(.canvas-node, .canvas-neighbour)[data-background-style="cover"] {
   background-size: cover;
 }
 
-.canvas-node[data-background-style="ratio"] {
+:is(.canvas-node, .canvas-neighbour)[data-background-style="ratio"] {
   background-size: contain;
 }
 
-.canvas-node[data-background-style="repeat"] {
+:is(.canvas-node, .canvas-neighbour)[data-background-style="repeat"] {
   background-repeat: repeat;
 }
 
@@ -607,8 +613,8 @@
 }
 
 /* The bar carries unrelated controls: the search, the view's zoom, the size of
-   every card, the grid, the history and the theme. A rule marks where one ends
-   and the next begins. */
+   every card, the grid, the history, the neighbours and the theme. A rule marks
+   where one ends and the next begins. */
 .canvas-control-divider {
   width: 1px;
   margin: 6px 4px;
@@ -736,6 +742,48 @@
 .canvas-history-entry[aria-current="true"] {
   color: var(--text-accent);
   font-weight: 600;
+}
+
+/* ---------- neighbours ---------- */
+
+/* The previews In and Out draw around a card, and the copies of the edges that
+   join them to it: over every card but an enlarged one. */
+.canvas-neighbours {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+}
+
+.canvas-neighbour-links {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* A copy of an edge is dashed, as a stand-in for the edge itself. */
+.canvas-neighbour-link .canvas-edge-line {
+  stroke-dasharray: 8 6;
+}
+
+/* A preview is drawn as its card is, in a dashed frame lifted off the board.
+   `placeNeighbours` sets its place and its size. */
+.canvas-neighbour {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border: 2px dashed var(--text-accent);
+  border-radius: 8px;
+  background-color: var(--canvas-node-background);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+/* A preview is a glance at its card: its content is cut where the preview
+   ends, and a wheel over it moves the board, or the page around a mounted
+   board. */
+.canvas-neighbour :is(.canvas-node-content, pre, .katex-display) {
+  overflow: hidden;
+  overscroll-behavior: auto;
 }
 
 /* ---------- single-file view: rendered note, or its markdown source ---------- */

@@ -110,6 +110,16 @@ const PREVIEW_SIZE = CARD_SIZES.wide
 const PREVIEW_GAP = 8
 
 /**
+ * In and Out preview a card's neighbours around it, each cut to the size of a
+ * card in Compact at most. The previews stand NEIGHBOUR_DISTANCE clear of the
+ * card, which leaves room for the edges between them, and NEIGHBOUR_GAP clear
+ * of each other.
+ */
+const NEIGHBOUR_SIZE = CARD_SIZES.compact
+const NEIGHBOUR_DISTANCE = 80
+const NEIGHBOUR_GAP = 20
+
+/**
  * A move to another card flies the view there on the path van Wijk and Nuij
  * give in "Smooth and efficient zooming and panning": it zooms out as it pans,
  * and back in as it lands, so that the way between the two cards stays in
@@ -160,6 +170,8 @@ const SIDE_NORMALS = {
   left: { x: -1, y: 0 },
 }
 
+const OPPOSITE_SIDES = { top: 'bottom', right: 'left', bottom: 'top', left: 'right' }
+
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'avif']
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
@@ -173,6 +185,9 @@ const BOARD_MARKUP = `
 
   <div class="canvas" id="canvas">
     <svg class="canvas-edges" id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="canvas-neighbours" id="neighbours">
+      <svg class="canvas-neighbour-links" id="neighbour-links" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
   </div>
 
   <div class="canvas-controls">
@@ -211,6 +226,12 @@ const BOARD_MARKUP = `
     <button class="canvas-control-item" id="history-toggle" title="Show the cards the focus has been on">History</button>
 
     <span class="canvas-control-divider"></span>
+    <span class="canvas-control-group">
+      <button class="canvas-control-item" data-neighbours="in" title="Show the cards with an edge into the focused card">In</button>
+      <button class="canvas-control-item" data-neighbours="out" title="Show the cards the focused card has an edge to">Out</button>
+    </span>
+
+    <span class="canvas-control-divider"></span>
     <button class="canvas-control-item theme-toggle" title="Toggle light and dark theme">☾</button>
   </div>
 
@@ -247,6 +268,8 @@ const wrapperEl = boardFragment.getElementById('wrapper')
 const backgroundEl = boardFragment.getElementById('background')
 const canvasEl = boardFragment.getElementById('canvas')
 const edgesEl = boardFragment.getElementById('edges')
+const neighboursEl = boardFragment.getElementById('neighbours')
+const neighbourLinksEl = boardFragment.getElementById('neighbour-links')
 const statusEl = boardFragment.getElementById('status')
 const controlsEl = boardFragment.querySelector('.canvas-controls')
 const zoomInEl = boardFragment.getElementById('zoom-in')
@@ -261,6 +284,7 @@ const gridSnapEl = boardFragment.getElementById('grid-snap')
 const historyToggleEl = boardFragment.getElementById('history-toggle')
 const historyEl = boardFragment.getElementById('history')
 const historyListEl = boardFragment.getElementById('history-list')
+const neighbourToggleEls = boardFragment.querySelectorAll('[data-neighbours]')
 const searchEl = boardFragment.getElementById('search')
 const searchResultsEl = boardFragment.getElementById('search-results')
 const themeToggleEls = boardFragment.querySelectorAll('.theme-toggle')
@@ -1043,7 +1067,12 @@ function createNodeElement(node) {
   el.style.left = `${node.x}px`
   el.style.top = `${node.y}px`
   applyNodeSize(el, node)
+  fillNodeElement(el, node)
+  return el
+}
 
+/** Draws into an element what the board draws in a card: the card's colour, and what it holds. */
+function fillNodeElement(el, node) {
   const color = resolveColor(node.color)
   if (color) {
     el.style.setProperty('--node-color', color)
@@ -1053,7 +1082,7 @@ function createNodeElement(node) {
   if (node.type === 'group') {
     if (node.label) el.appendChild(createGroupLabelElement(node))
     if (node.background) applyGroupBackground(el, node)
-    return el
+    return
   }
 
   if (node.type === 'file' || node.type === 'link') el.appendChild(createTitleElement(node))
@@ -1074,8 +1103,6 @@ function createNodeElement(node) {
   } else {
     contentEl.replaceChildren(placeholderElement(`Unsupported node type: ${node.type}`))
   }
-
-  return el
 }
 
 // -------------------------------------------------------------- edge element
@@ -1283,7 +1310,8 @@ function focusOnPress(target) {
 
 /**
  * Puts the focus on a card, or on the board for null, and marks the card that
- * holds it, on the board and in the history.
+ * holds it, on the board and in the history. The previews of In and Out move
+ * to a card that takes the focus.
  */
 function focusCard(cardEl) {
   if (cardEl === focusedCardEl) return
@@ -1294,6 +1322,7 @@ function focusCard(cardEl) {
   focusedCardEl = cardEl
   if (cardEl !== null) cardEl.dataset.focused = 'true'
   recordFocus(cardEl)
+  surroundCard(cardEl)
 }
 
 /** Fits the view to one card, and puts the focus on it as a press on it would. */
@@ -1429,10 +1458,10 @@ function wheelScrollsCard(target) {
 }
 
 /**
- * Card content scrolls and selects text, a card title is a link, the controls
- * and a card's enlarge button are buttons, and an enlarged card is there to be
- * read: a press on any of them neither pans the viewport nor drags the card it
- * belongs to.
+ * Card content scrolls and selects text, a card title is a link, the controls,
+ * a card's enlarge button and a preview's button are buttons, and an enlarged
+ * card is there to be read: a press on any of them neither pans the viewport
+ * nor drags the card it belongs to.
  *
  * Leaving the controls out of this would make them unclickable rather than
  * merely draggable: the pan captures the pointer, capture retargets the mouse
@@ -1440,7 +1469,7 @@ function wheelScrollsCard(target) {
  */
 function isInteractiveTarget(target) {
   if (!(target instanceof Element)) return false
-  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-enlarge, .canvas-node[data-enlarged="true"], .canvas-controls, .canvas-history'
+  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-enlarge, .canvas-neighbour-go, .canvas-node[data-enlarged="true"], .canvas-controls, .canvas-history'
   return target.closest(interactive) !== null
 }
 
@@ -1657,11 +1686,16 @@ function movedNodes(node) {
   return [node].concat(contained)
 }
 
-/** Re-routes every edge attached to a node whose box has just changed. */
+/**
+ * Re-routes every edge attached to a node whose box has just changed. The
+ * previews follow too, as the node may be the card they stand around, or a
+ * card one of them shows.
+ */
 function relayoutNodeEdges(node) {
   const attached = layout.edgesByNode.get(node.id)
   if (!attached) return
   for (const record of attached) layoutEdge(record)
+  placeNeighbours()
 }
 
 /** Moves a node in the data and in the DOM, and re-routes the edges attached to it. */
@@ -1953,6 +1987,7 @@ function readCardSizes() {
  * Re-routes each edge attached to these resized nodes once, after all of them
  * hold their new box, so an edge between two of them is routed with both. Then
  * fits the edge layer to the board, and returns the board's bounds for the fit.
+ * The previews of In and Out are placed again on the way.
  */
 function relayoutAfterResize(nodes) {
   const records = new Set()
@@ -1961,6 +1996,7 @@ function relayoutAfterResize(nodes) {
     for (const record of attached) records.add(record)
   }
   for (const record of records) layoutEdge(record)
+  placeNeighbours()
 
   const bounds = contentBounds(layout.nodes)
   resizeEdgeLayer(bounds)
@@ -2413,6 +2449,195 @@ function installFocusHistory() {
   historyEl.addEventListener('wheel', event => event.stopPropagation())
 }
 
+// ---------------------------------------------------------------- neighbours
+
+/** The directions of the edges whose cards In and Out preview: `in` while In is on, `out` while Out is. */
+const shownDirections = new Set()
+
+/**
+ * The card the previews stand around: the last card that took the focus, or
+ * null until one has. A press on the board leaves them there, so that the
+ * board can be panned around them.
+ */
+let surroundedNode = null
+
+/** The previews on the board, each `{ node, record, direction, el, box, link, side }`. */
+let neighbourPreviews = []
+
+/** Moves the previews to a card that takes the focus. */
+function surroundCard(cardEl) {
+  if (cardEl === null) return
+  const node = observedNodes.get(cardEl)
+  if (node === surroundedNode) return
+
+  surroundedNode = node
+  drawNeighbours()
+}
+
+/**
+ * The cards to preview around a card, each with the edge that joins it to the
+ * card and that edge's direction: `in` for an edge into the card, `out` for
+ * one out of it. A card that several edges join in one direction is previewed
+ * once in that direction, for the first of them.
+ */
+function findNeighbours(node) {
+  const found = new Map()
+  const attached = layout.edgesByNode.get(node.id) ?? []
+  for (const record of attached) {
+    // An edge from a card to itself leads to no other card.
+    if (record.fromNode === record.toNode) continue
+
+    const direction = record.toNode === node ? 'in' : 'out'
+    if (!shownDirections.has(direction)) continue
+    const other = direction === 'in' ? record.fromNode : record.toNode
+    const key = `${direction} ${other.id}`
+    if (found.has(key)) continue
+    found.set(key, { node: other, record, direction })
+  }
+  return [...found.values()]
+}
+
+/** lucide `locate-fixed`: the button finds the card on the board. */
+const LOCATE_ICON =
+  '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/>' +
+  '<line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/>' +
+  '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>'
+
+/**
+ * A preview draws its card afresh, as the board draws it, with a button in its
+ * top-right corner that flies the view to the card. A copy of the edge joins
+ * it to the surrounded card. `placeNeighbours` sets the preview's box, and the
+ * sides of the copy.
+ */
+function createNeighbourPreview(found) {
+  const el = document.createElement('div')
+  el.className = 'canvas-neighbour'
+  fillNodeElement(el, found.node)
+
+  const goEl = document.createElement('button')
+  goEl.className = 'canvas-neighbour-go'
+  goEl.type = 'button'
+  goEl.title = 'Fly to this card on the board'
+  goEl.appendChild(createIcon(LOCATE_ICON))
+  goEl.addEventListener('click', () => flyToCard(found.node))
+  el.appendChild(goEl)
+
+  const box = { x: 0, y: 0, width: 0, height: 0 }
+  const isInput = found.direction === 'in'
+  const fromNode = isInput ? box : surroundedNode
+  const toNode = isInput ? surroundedNode : box
+  const link = createEdgeElements({ ...found.record.edge }, fromNode, toNode)
+  link.group.setAttribute('class', 'canvas-neighbour-link')
+  return { ...found, el, box, link, side: null }
+}
+
+/** Draws the previews around the surrounded card afresh, for the directions shown. */
+function drawNeighbours() {
+  neighbourLinksEl.replaceChildren()
+  neighboursEl.replaceChildren(neighbourLinksEl)
+  neighbourPreviews = []
+  if (surroundedNode === null) return
+
+  for (const found of findNeighbours(surroundedNode)) {
+    const preview = createNeighbourPreview(found)
+    neighbourLinksEl.appendChild(preview.link.group)
+    neighboursEl.appendChild(preview.el)
+    neighbourPreviews.push(preview)
+  }
+  placeNeighbours()
+}
+
+/** The side of the surrounded card that a preview's edge meets, where the board draws that edge. */
+function neighbourSide(preview) {
+  const edge = preview.record.edge
+  const side = preview.direction === 'in' ? edge.toSide : edge.fromSide
+  if (side) return side
+  return inferSide(surroundedNode, preview.node)
+}
+
+/**
+ * Lines up the previews on one side of a card, in a column beside it or in a
+ * row above or below it, in the order their cards have along that side. The
+ * line is centred on the middle of the side, where the edges meet it.
+ */
+function stackNeighbours(card, side, previews) {
+  const isColumn = side === 'left' || side === 'right'
+  const centre = node => (isColumn ? node.y + node.height / 2 : node.x + node.width / 2)
+  previews.sort((a, b) => centre(a.node) - centre(b.node))
+
+  let length = NEIGHBOUR_GAP * (previews.length - 1)
+  for (const { node, box } of previews) {
+    box.width = Math.min(node.width, NEIGHBOUR_SIZE.width)
+    box.height = Math.min(node.height, NEIGHBOUR_SIZE.maxHeight)
+    length += isColumn ? box.height : box.width
+  }
+
+  const middle = sideAnchor(card, side)
+  let along = (isColumn ? middle.y : middle.x) - length / 2
+  for (const { box } of previews) {
+    if (side === 'left') box.x = card.x - NEIGHBOUR_DISTANCE - box.width
+    else if (side === 'right') box.x = card.x + card.width + NEIGHBOUR_DISTANCE
+    else if (side === 'top') box.y = card.y - NEIGHBOUR_DISTANCE - box.height
+    else box.y = card.y + card.height + NEIGHBOUR_DISTANCE
+
+    if (isColumn) box.y = along
+    else box.x = along
+    along += (isColumn ? box.height : box.width) + NEIGHBOUR_GAP
+  }
+}
+
+/**
+ * Lines the previews up around the surrounded card, each on the side its edge
+ * meets, and routes each copy of an edge from the preview's side that faces
+ * the card. The previews' edge layer grows to take them in.
+ */
+function placeNeighbours() {
+  if (neighbourPreviews.length === 0) return
+
+  const card = surroundedNode
+  for (const preview of neighbourPreviews) preview.side = neighbourSide(preview)
+  for (const side of Object.keys(SIDE_NORMALS)) {
+    const previews = neighbourPreviews.filter(preview => preview.side === side)
+    stackNeighbours(card, side, previews)
+  }
+
+  for (const preview of neighbourPreviews) {
+    const { el, box, link } = preview
+    el.style.left = `${box.x}px`
+    el.style.top = `${box.y}px`
+    el.style.width = `${box.width}px`
+    el.style.height = `${box.height}px`
+
+    const facing = OPPOSITE_SIDES[preview.side]
+    const isInput = preview.direction === 'in'
+    link.edge.fromSide = isInput ? facing : preview.side
+    link.edge.toSide = isInput ? preview.side : facing
+    layoutEdge(link)
+  }
+
+  const boxes = neighbourPreviews.map(preview => preview.box)
+  resizeEdgeLayer(contentBounds([card, ...boxes]), neighbourLinksEl)
+}
+
+/**
+ * In shows, around the last card that took the focus, a preview of each card
+ * with an edge into it, and Out one of each card it has an edge to. Each
+ * button shows or removes its previews, and both start off on each visit.
+ */
+function installNeighbours() {
+  for (const toggleEl of neighbourToggleEls) {
+    toggleEl.setAttribute('aria-pressed', 'false')
+    toggleEl.addEventListener('click', () => {
+      const direction = toggleEl.dataset.neighbours
+      const shown = !shownDirections.has(direction)
+      if (shown) shownDirections.add(direction)
+      else shownDirections.delete(direction)
+      toggleEl.setAttribute('aria-pressed', String(shown))
+      drawNeighbours()
+    })
+  }
+}
+
 // -------------------------------------------------------------------- search
 
 /** What a search result calls a card: the name or label it shows, or its first line. */
@@ -2519,18 +2744,18 @@ function installSearch() {
 
 // ------------------------------------------------------------------- drawing
 
-/** The SVG layer keeps a margin around the nodes so bowed edges are not clipped. */
-function resizeEdgeLayer(bounds) {
+/** An SVG layer, the board's or the previews', keeps a margin around the nodes so bowed edges are not clipped. */
+function resizeEdgeLayer(bounds, layerEl = edgesEl) {
   const layerX = bounds.minX - EDGE_LAYER_MARGIN
   const layerY = bounds.minY - EDGE_LAYER_MARGIN
   const layerWidth = bounds.maxX - bounds.minX + EDGE_LAYER_MARGIN * 2
   const layerHeight = bounds.maxY - bounds.minY + EDGE_LAYER_MARGIN * 2
 
-  edgesEl.style.left = `${layerX}px`
-  edgesEl.style.top = `${layerY}px`
-  edgesEl.setAttribute('width', layerWidth)
-  edgesEl.setAttribute('height', layerHeight)
-  edgesEl.setAttribute('viewBox', `${layerX} ${layerY} ${layerWidth} ${layerHeight}`)
+  layerEl.style.left = `${layerX}px`
+  layerEl.style.top = `${layerY}px`
+  layerEl.setAttribute('width', layerWidth)
+  layerEl.setAttribute('height', layerHeight)
+  layerEl.setAttribute('viewBox', `${layerX} ${layerY} ${layerWidth} ${layerHeight}`)
 }
 
 /** Lists the edge under both its endpoints, so a moved node finds what to re-route. */
@@ -2836,6 +3061,7 @@ async function main(params) {
   installEnlargeKey()
   installCardPreview()
   installFocusHistory()
+  installNeighbours()
 }
 
 /** Appends `el`, a `<link>` or a `<script>`, to `parent`, and resolves once the file at `url` has loaded. */
