@@ -226,12 +226,6 @@ const BOARD_MARKUP = `
     <button class="canvas-control-item" id="history-toggle" title="Show the cards the focus has been on">History</button>
 
     <span class="canvas-control-divider"></span>
-    <span class="canvas-control-group">
-      <button class="canvas-control-item" data-neighbours="in" title="Show the cards with an edge into the focused card">In</button>
-      <button class="canvas-control-item" data-neighbours="out" title="Show the cards the focused card has an edge to">Out</button>
-    </span>
-
-    <span class="canvas-control-divider"></span>
     <button class="canvas-control-item theme-toggle" title="Toggle light and dark theme">☾</button>
   </div>
 
@@ -284,7 +278,6 @@ const gridSnapEl = boardFragment.getElementById('grid-snap')
 const historyToggleEl = boardFragment.getElementById('history-toggle')
 const historyEl = boardFragment.getElementById('history')
 const historyListEl = boardFragment.getElementById('history-list')
-const neighbourToggleEls = boardFragment.querySelectorAll('[data-neighbours]')
 const searchEl = boardFragment.getElementById('search')
 const searchResultsEl = boardFragment.getElementById('search-results')
 const themeToggleEls = boardFragment.querySelectorAll('.theme-toggle')
@@ -1298,31 +1291,31 @@ let focusedCardEl = null
  * take the rest of the gesture over, which is what a reader paging through a
  * board never means.
  *
- * The controls and the history are neither: pressing one leaves the focus where
- * the reader put it.
+ * The controls, the history and the previews of In and Out are neither:
+ * pressing one leaves the focus where the reader put it.
  */
 function focusOnPress(target) {
   if (!(target instanceof Element)) return
-  if (target.closest('.canvas-controls, .canvas-history') !== null) return
+  if (target.closest('.canvas-controls, .canvas-history, .canvas-neighbour') !== null) return
 
   focusCard(target.closest('.canvas-node'))
 }
 
 /**
  * Puts the focus on a card, or on the board for null, and marks the card that
- * holds it, on the board and in the history. The previews of In and Out move
- * to a card that takes the focus.
+ * holds it, on the board and in the history.
  */
 function focusCard(cardEl) {
   if (cardEl === focusedCardEl) return
 
   // Only the focused card is ever enlarged, so it goes back as the focus leaves it.
   restoreEnlargedCard()
+  // Only the focused card shows its previews, too.
+  hideNeighbours()
   if (focusedCardEl !== null) delete focusedCardEl.dataset.focused
   focusedCardEl = cardEl
   if (cardEl !== null) cardEl.dataset.focused = 'true'
   recordFocus(cardEl)
-  surroundCard(cardEl)
 }
 
 /** Fits the view to one card, and puts the focus on it as a press on it would. */
@@ -1458,8 +1451,8 @@ function wheelScrollsCard(target) {
 }
 
 /**
- * Card content scrolls and selects text, a card title is a link, the controls,
- * a card's enlarge button and a preview's button are buttons, and an enlarged
+ * Card content scrolls and selects text, a card title is a link, the controls
+ * and the bar in a card's or a preview's corner hold buttons, and an enlarged
  * card is there to be read: a press on any of them neither pans the viewport
  * nor drags the card it belongs to.
  *
@@ -1469,7 +1462,7 @@ function wheelScrollsCard(target) {
  */
 function isInteractiveTarget(target) {
   if (!(target instanceof Element)) return false
-  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-enlarge, .canvas-neighbour-go, .canvas-node[data-enlarged="true"], .canvas-controls, .canvas-history'
+  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-bar, .canvas-node[data-enlarged="true"], .canvas-controls, .canvas-history'
   return target.closest(interactive) !== null
 }
 
@@ -2196,14 +2189,14 @@ const ENLARGE_ICON = '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7
  * again, or until the focus leaves the card. It is how a touch screen, with no
  * Space to press, reads a card whole.
  */
-function installNodeEnlarge(el) {
+function installNodeEnlarge(el, barEl) {
   const buttonEl = document.createElement('button')
   buttonEl.className = 'canvas-node-enlarge'
   buttonEl.type = 'button'
   buttonEl.title = 'Show the whole card, or press Space'
   buttonEl.setAttribute('aria-pressed', 'false')
   buttonEl.appendChild(createIcon(ENLARGE_ICON))
-  el.appendChild(buttonEl)
+  barEl.appendChild(buttonEl)
 
   // A pressed button would keep the keyboard focus, and a later Space would press it again.
   buttonEl.addEventListener('pointerdown', event => event.preventDefault())
@@ -2451,36 +2444,28 @@ function installFocusHistory() {
 
 // ---------------------------------------------------------------- neighbours
 
-/** The directions of the edges whose cards In and Out preview: `in` while In is on, `out` while Out is. */
+/** In and Out, keyed by the direction of the edges whose cards they preview. */
+const NEIGHBOUR_BUTTONS = {
+  in: { label: 'In', title: 'Show the cards with an edge into this card' },
+  out: { label: 'Out', title: 'Show the cards this card has an edge to' },
+}
+
+/** The directions In and Out preview the focused card's neighbours in: `in`, `out`, both or neither. */
 const shownDirections = new Set()
 
-/**
- * The card the previews stand around: the last card that took the focus, or
- * null until one has. A press on the board leaves them there, so that the
- * board can be panned around them.
- */
+/** The focused card while In or Out shows its previews, or null. */
 let surroundedNode = null
 
 /** The previews on the board, each `{ node, record, direction, el, box, link, side }`. */
 let neighbourPreviews = []
 
-/** Moves the previews to a card that takes the focus. */
-function surroundCard(cardEl) {
-  if (cardEl === null) return
-  const node = observedNodes.get(cardEl)
-  if (node === surroundedNode) return
-
-  surroundedNode = node
-  drawNeighbours()
-}
-
 /**
- * The cards to preview around a card, each with the edge that joins it to the
- * card and that edge's direction: `in` for an edge into the card, `out` for
- * one out of it. A card that several edges join in one direction is previewed
- * once in that direction, for the first of them.
+ * The cards to preview around a card, in the given directions, each with the
+ * edge that joins it to the card and that edge's direction: `in` for an edge
+ * into the card, `out` for one out of it. A card that several edges join in
+ * one direction is previewed once in that direction, for the first of them.
  */
-function findNeighbours(node) {
+function findNeighbours(node, directions) {
   const found = new Map()
   const attached = layout.edgesByNode.get(node.id) ?? []
   for (const record of attached) {
@@ -2488,7 +2473,7 @@ function findNeighbours(node) {
     if (record.fromNode === record.toNode) continue
 
     const direction = record.toNode === node ? 'in' : 'out'
-    if (!shownDirections.has(direction)) continue
+    if (!directions.has(direction)) continue
     const other = direction === 'in' ? record.fromNode : record.toNode
     const key = `${direction} ${other.id}`
     if (found.has(key)) continue
@@ -2504,14 +2489,77 @@ const LOCATE_ICON =
   '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>'
 
 /**
- * A preview draws its card afresh, as the board draws it, with a button in its
- * top-right corner that flies the view to the card. A copy of the edge joins
- * it to the surrounded card. `placeNeighbours` sets the preview's box, and the
- * sides of the copy.
+ * The bar in a card's top-right corner holds In and Out, and the button that
+ * enlarges the card. In, or Out, is greyed out on a card that no edge leads
+ * into, or out of.
+ */
+function installNodeBar(node) {
+  const el = layout.elements.get(node.id)
+  const barEl = document.createElement('div')
+  barEl.className = 'canvas-node-bar'
+  for (const [direction, { label, title }] of Object.entries(NEIGHBOUR_BUTTONS)) {
+    const buttonEl = document.createElement('button')
+    buttonEl.className = 'canvas-node-neighbours'
+    buttonEl.type = 'button'
+    buttonEl.dataset.direction = direction
+    buttonEl.textContent = label
+    buttonEl.title = title
+    buttonEl.setAttribute('aria-pressed', 'false')
+    const neighbours = findNeighbours(node, new Set([direction]))
+    buttonEl.disabled = neighbours.length === 0
+    // As with the enlarge button, a press leaves the keyboard focus where it was.
+    buttonEl.addEventListener('pointerdown', event => event.preventDefault())
+    buttonEl.addEventListener('click', () => toggleNeighbours(node, direction))
+    barEl.appendChild(buttonEl)
+  }
+  // A group is all frame, with nothing to read.
+  if (node.type !== 'group') installNodeEnlarge(el, barEl)
+  el.appendChild(barEl)
+}
+
+/**
+ * Shows the previews of a card's neighbours in one direction, or removes them.
+ * The card is the focused one, as its bar shows on no other card.
+ */
+function toggleNeighbours(node, direction) {
+  if (shownDirections.has(direction)) shownDirections.delete(direction)
+  else shownDirections.add(direction)
+  surroundedNode = shownDirections.size === 0 ? null : node
+  markNeighbourButtons(node)
+  drawNeighbours()
+}
+
+/** Removes the previews as the focus leaves their card, and turns the card's In and Out off. */
+function hideNeighbours() {
+  if (surroundedNode === null) return
+
+  const node = surroundedNode
+  shownDirections.clear()
+  surroundedNode = null
+  markNeighbourButtons(node)
+  drawNeighbours()
+}
+
+/** Marks a card's In and Out as pressed while their previews are on the board. */
+function markNeighbourButtons(node) {
+  const buttonEls = layout.elements.get(node.id).querySelectorAll('.canvas-node-neighbours')
+  for (const buttonEl of buttonEls) {
+    const shown = shownDirections.has(buttonEl.dataset.direction)
+    buttonEl.setAttribute('aria-pressed', String(shown))
+  }
+}
+
+/**
+ * A preview draws its card afresh, as the board draws it, with a bar in its
+ * top-right corner whose button flies the view to the card. A copy of the edge
+ * joins it to the surrounded card. The preview and the copy take the colour of
+ * their direction. `placeNeighbours` sets the preview's box, and the sides of
+ * the copy.
  */
 function createNeighbourPreview(found) {
   const el = document.createElement('div')
   el.className = 'canvas-neighbour'
+  el.dataset.direction = found.direction
   fillNodeElement(el, found.node)
 
   const goEl = document.createElement('button')
@@ -2520,14 +2568,19 @@ function createNeighbourPreview(found) {
   goEl.title = 'Fly to this card on the board'
   goEl.appendChild(createIcon(LOCATE_ICON))
   goEl.addEventListener('click', () => flyToCard(found.node))
-  el.appendChild(goEl)
+  const barEl = document.createElement('div')
+  barEl.className = 'canvas-node-bar'
+  barEl.appendChild(goEl)
+  el.appendChild(barEl)
 
   const box = { x: 0, y: 0, width: 0, height: 0 }
   const isInput = found.direction === 'in'
   const fromNode = isInput ? box : surroundedNode
   const toNode = isInput ? surroundedNode : box
-  const link = createEdgeElements({ ...found.record.edge }, fromNode, toNode)
+  const edge = { ...found.record.edge, color: undefined }
+  const link = createEdgeElements(edge, fromNode, toNode)
   link.group.setAttribute('class', 'canvas-neighbour-link')
+  link.group.setAttribute('data-direction', found.direction)
   return { ...found, el, box, link, side: null }
 }
 
@@ -2538,7 +2591,7 @@ function drawNeighbours() {
   neighbourPreviews = []
   if (surroundedNode === null) return
 
-  for (const found of findNeighbours(surroundedNode)) {
+  for (const found of findNeighbours(surroundedNode, shownDirections)) {
     const preview = createNeighbourPreview(found)
     neighbourLinksEl.appendChild(preview.link.group)
     neighboursEl.appendChild(preview.el)
@@ -2617,25 +2670,6 @@ function placeNeighbours() {
 
   const boxes = neighbourPreviews.map(preview => preview.box)
   resizeEdgeLayer(contentBounds([card, ...boxes]), neighbourLinksEl)
-}
-
-/**
- * In shows, around the last card that took the focus, a preview of each card
- * with an edge into it, and Out one of each card it has an edge to. Each
- * button shows or removes its previews, and both start off on each visit.
- */
-function installNeighbours() {
-  for (const toggleEl of neighbourToggleEls) {
-    toggleEl.setAttribute('aria-pressed', 'false')
-    toggleEl.addEventListener('click', () => {
-      const direction = toggleEl.dataset.neighbours
-      const shown = !shownDirections.has(direction)
-      if (shown) shownDirections.add(direction)
-      else shownDirections.delete(direction)
-      toggleEl.setAttribute('aria-pressed', String(shown))
-      drawNeighbours()
-    })
-  }
 }
 
 // -------------------------------------------------------------------- search
@@ -2823,8 +2857,6 @@ function drawCanvas(data) {
     layout.elements.set(node.id, el)
     installNodeDrag(node, el)
     installNodeResize(node, el)
-    // A group is all frame, with nothing to read.
-    if (node.type !== 'group') installNodeEnlarge(el)
     observeCardSize(el, node)
     canvasEl.appendChild(el)
   }
@@ -2845,6 +2877,9 @@ function drawCanvas(data) {
     edgesEl.appendChild(record.group)
     indexEdge(record)
   }
+
+  // In and Out tell from the edges whether the card has a neighbour to show.
+  for (const node of nodes) installNodeBar(node)
 }
 
 // ----------------------------------------------------------------- bootstrap
@@ -3061,7 +3096,6 @@ async function main(params) {
   installEnlargeKey()
   installCardPreview()
   installFocusHistory()
-  installNeighbours()
 }
 
 /** Appends `el`, a `<link>` or a `<script>`, to `parent`, and resolves once the file at `url` has loaded. */

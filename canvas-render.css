@@ -15,6 +15,8 @@
   --canvas-node-background: var(--background-primary);
   --canvas-node-border: var(--background-modifier-border);
   --canvas-edge-color: #7a7a7a;
+  --canvas-input-color: #2563eb;
+  --canvas-output-color: #ea580c;
   --canvas-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   --canvas-color-tint: 12%;
 }
@@ -32,6 +34,8 @@
   --code-background: rgba(255, 255, 255, 0.06);
   --canvas-dot-pattern: #333333;
   --canvas-edge-color: #999999;
+  --canvas-input-color: #60a5fa;
+  --canvas-output-color: #fb923c;
   --canvas-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   --canvas-color-tint: 18%;
 }
@@ -201,22 +205,35 @@
   display: none;
 }
 
-/* The button in a card's top-right corner that enlarges the card. It stays one
-   size on screen at any zoom, so it shows on the focused card alone: on a board
-   zoomed out, it would cover much of any small card the pointer crossed.
+/* The bar in a card's top-right corner, with In, Out and the button that
+   enlarges the card. It stays one size on screen at any zoom, so it shows on
+   the focused card alone: on a board zoomed out, it would cover much of any
+   small card the pointer crossed.
    Its corner sits on the card's outer corner, past the 1 px border, and is
    moved 4 px inwards on screen. While the card is enlarged, `--enlarge-top` and
-   `--enlarge-right` keep it where the card's corner is on the board. The button
-   that flies from a preview to its card looks the same, and always shows. */
-.canvas-node-enlarge,
-.canvas-neighbour-go {
+   `--enlarge-right` keep it where the card's corner is on the board. A preview's
+   bar, with the button that flies to its card, looks the same, and always shows. */
+.canvas-node-bar {
   position: absolute;
   top: calc(var(--enlarge-top, 0px) - 1px);
   right: calc(var(--enlarge-right, 0px) - 1px);
   display: flex;
+  gap: 4px;
+  visibility: hidden;
+  transform: scale(calc(1 / var(--zoom))) translate(-4px, 4px);
+  transform-origin: 100% 0;
+}
+
+.canvas-node[data-focused="true"] .canvas-node-bar,
+.canvas-neighbour .canvas-node-bar {
+  visibility: visible;
+}
+
+.canvas-node-bar button {
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  min-width: 28px;
   height: 28px;
   padding: 0;
   border: 1px solid var(--background-modifier-border);
@@ -224,14 +241,6 @@
   background: var(--background-primary);
   color: var(--text-muted);
   cursor: pointer;
-  visibility: hidden;
-  transform: scale(calc(1 / var(--zoom))) translate(-4px, 4px);
-  transform-origin: 100% 0;
-}
-
-.canvas-node[data-focused="true"] .canvas-node-enlarge,
-.canvas-neighbour-go {
-  visibility: visible;
 }
 
 .canvas-node-enlarge:hover,
@@ -240,8 +249,7 @@
   color: var(--text-accent);
 }
 
-.canvas-node-enlarge .canvas-node-title-icon,
-.canvas-neighbour-go .canvas-node-title-icon {
+.canvas-node-bar .canvas-node-title-icon {
   width: 16px;
   height: 16px;
   opacity: 1;
@@ -613,8 +621,8 @@
 }
 
 /* The bar carries unrelated controls: the search, the view's zoom, the size of
-   every card, the grid, the history, the neighbours and the theme. A rule marks
-   where one ends and the next begins. */
+   every card, the grid, the history and the theme. A rule marks where one ends
+   and the next begins. */
 .canvas-control-divider {
   width: 1px;
   margin: 6px 4px;
@@ -746,6 +754,38 @@
 
 /* ---------- neighbours ---------- */
 
+/* In draws in blue and Out in orange: the pressed button, its previews and
+   the copies of their edges. */
+:is(.canvas-node-neighbours, .canvas-neighbour, .canvas-neighbour-link)[data-direction="in"] {
+  --direction-color: var(--canvas-input-color);
+}
+
+:is(.canvas-node-neighbours, .canvas-neighbour, .canvas-neighbour-link)[data-direction="out"] {
+  --direction-color: var(--canvas-output-color);
+}
+
+.canvas-node-neighbours {
+  padding: 0 6px;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.canvas-node-neighbours:enabled:hover,
+.canvas-node-neighbours[aria-pressed="true"] {
+  border-color: var(--direction-color);
+  color: var(--direction-color);
+}
+
+.canvas-node-neighbours[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--direction-color) 15%, var(--background-primary));
+}
+
+/* No edge leads into the card, or out of it, for In or Out to follow. */
+.canvas-node-neighbours:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* The previews In and Out draw around a card, and the copies of the edges that
    join them to it: over every card but an enlarged one. */
 .canvas-neighbours {
@@ -766,13 +806,17 @@
   stroke-dasharray: 8 6;
 }
 
+.canvas-neighbour-link {
+  --edge-color: var(--direction-color);
+}
+
 /* A preview is drawn as its card is, in a dashed frame lifted off the board.
    `placeNeighbours` sets its place and its size. */
 .canvas-neighbour {
   position: absolute;
   display: flex;
   flex-direction: column;
-  border: 2px dashed var(--text-accent);
+  border: 2px dashed var(--direction-color);
   border-radius: 8px;
   background-color: var(--canvas-node-background);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
