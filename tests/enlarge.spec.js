@@ -26,7 +26,7 @@ function cardBox(card) {
   return card.evaluate(el => [el.offsetLeft, el.offsetTop, el.offsetWidth, el.offsetHeight])
 }
 
-test('holding Space draws the focused card whole at 100% over a zoomed-out board, and letting go puts it back', async ({ page }) => {
+test('a press of Space draws the focused card whole at 100% over a zoomed-out board, and the next press puts it back', async ({ page }) => {
   await openBoard(page, BOARD, {}, '&cards=compact')
   const card = page.locator('.canvas-node').first()
   const content = card.locator('.canvas-node-content')
@@ -39,7 +39,7 @@ test('holding Space draws the focused card whole at 100% over a zoomed-out board
   const clipped = await content.evaluate(el => el.scrollHeight > el.clientHeight)
   expect(clipped).toBe(true)
 
-  await page.keyboard.down('Space')
+  await page.keyboard.press('Space')
   await expect(card).toHaveAttribute('data-enlarged', 'true')
   // The card grows from its top-left corner, which stays where it was.
   const screenBox = await card.boundingBox()
@@ -51,7 +51,7 @@ test('holding Space draws the focused card whole at 100% over a zoomed-out board
   const stateEnlarged = await boardState(page)
   expect(stateEnlarged).toEqual(stateBefore)
 
-  await page.keyboard.up('Space')
+  await page.keyboard.press('Space')
   // Read at once: the card snaps back rather than easing.
   const boxAfter = await cardBox(card)
   expect(boxAfter).toEqual(boxBefore)
@@ -70,7 +70,7 @@ test('a long card keeps its corner while a card in Wide fits right of and below 
   const before = await card.boundingBox()
   expect(before).toEqual({ x: 100, y: 60, width: 200, height: 100 })
 
-  await page.keyboard.down('Space')
+  await page.keyboard.press('Space')
   await expect(card).toHaveAttribute('data-enlarged', 'true')
   const box = await card.boundingBox()
   const controls = await page.locator('.canvas-controls').boundingBox()
@@ -94,7 +94,7 @@ test('a card near the bottom-right corner of the board moves left and up only un
   expect(before).toEqual({ x: 1000, y: 500, width: 200, height: 100 })
   const buttonBefore = await button.boundingBox()
 
-  await page.keyboard.down('Space')
+  await page.keyboard.press('Space')
   await expect(card).toHaveAttribute('data-enlarged', 'true')
   const box = await card.boundingBox()
   const board = await page.locator('.canvas-wrapper').boundingBox()
@@ -107,7 +107,7 @@ test('a card near the bottom-right corner of the board moves left and up only un
   expect(buttonEnlarged.x).toBeCloseTo(buttonBefore.x, 1)
   expect(buttonEnlarged.y).toBeCloseTo(buttonBefore.y, 1)
 
-  await page.keyboard.up('Space')
+  await page.keyboard.press('Space')
   await expect(card).not.toHaveAttribute('data-enlarged')
   const after = await card.boundingBox()
   expect(after).toEqual(before)
@@ -145,6 +145,20 @@ test('the enlarge button stays in place, so a second press without moving puts t
   await expect(card).not.toHaveAttribute('data-focused')
 })
 
+test('a card that Space enlarged goes back when the focus moves to another card', async ({ page }) => {
+  await openBoard(page, BOARD)
+  const cardA = page.locator('.canvas-node').first()
+  const cardB = page.locator('.canvas-node').nth(1)
+  await cardA.locator('.canvas-node-content').click()
+  await page.keyboard.press('Space')
+  await expect(cardA).toHaveAttribute('data-enlarged', 'true')
+
+  await cardB.click()
+  await expect(cardA).not.toHaveAttribute('data-enlarged')
+  await expect(cardB).toHaveAttribute('data-focused', 'true')
+  await expect(cardB).not.toHaveAttribute('data-enlarged')
+})
+
 test('Space after a click on a control enlarges the card, and does not press the control again', async ({ page }) => {
   await openBoard(page, BOARD)
   const card = page.locator('.canvas-node').first()
@@ -152,9 +166,9 @@ test('Space after a click on a control enlarges the card, and does not press the
   await page.locator('#zoom-in').click()
   const zoom = await page.evaluate(() => view.zoom)
 
-  await page.keyboard.down('Space')
+  await page.keyboard.press('Space')
   await expect(card).toHaveAttribute('data-enlarged', 'true')
-  await page.keyboard.up('Space')
+  await page.keyboard.press('Space')
   await expect(card).not.toHaveAttribute('data-enlarged')
   const zoomAfter = await page.evaluate(() => view.zoom)
   expect(zoomAfter).toBe(zoom)

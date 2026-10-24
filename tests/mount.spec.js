@@ -122,11 +122,11 @@ test('Space enlarges the focused card of a mounted board only while the pointer 
   await expect(card).not.toHaveAttribute('data-enlarged')
 
   await card.locator('.canvas-node-content').hover()
-  await page.keyboard.down('Space')
+  await page.keyboard.press('Space')
   await expect(card).toHaveAttribute('data-enlarged', 'true')
   const takenOnBoard = await page.evaluate(() => post.spaceTaken)
   expect(takenOnBoard).toBe(true)
-  await page.keyboard.up('Space')
+  await page.keyboard.press('Space')
   await expect(card).not.toHaveAttribute('data-enlarged')
 })
 

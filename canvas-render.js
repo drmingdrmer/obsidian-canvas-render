@@ -1971,13 +1971,13 @@ const ENLARGE_ICON = '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7
 /**
  * The button in a card's top-right corner enlarges the card until it is pressed
  * again, or until the focus leaves the card. It is how a touch screen, with no
- * Space to hold, reads a card whole.
+ * Space to press, reads a card whole.
  */
 function installNodeEnlarge(el) {
   const buttonEl = document.createElement('button')
   buttonEl.className = 'canvas-node-enlarge'
   buttonEl.type = 'button'
-  buttonEl.title = 'Show the whole card, or hold Space'
+  buttonEl.title = 'Show the whole card, or press Space'
   buttonEl.setAttribute('aria-pressed', 'false')
   buttonEl.appendChild(createIcon(ENLARGE_ICON))
   el.appendChild(buttonEl)
@@ -1997,12 +1997,12 @@ function isField(el) {
 }
 
 /**
- * Whether a press of Space enlarges the focused card. On a board mounted in
- * another page, Space scrolls that page, so the board takes it only while the
- * pointer is over the board. A form field keeps its Space, and so does a file
- * shown over the board.
+ * Whether a press of Space enlarges the focused card, or puts it back. On a
+ * board mounted in another page, Space scrolls that page, so the board takes it
+ * only while the pointer is over the board. A form field keeps its Space, and
+ * so does a file shown over the board.
  */
-function spaceEnlarges(event, pointerOverBoard) {
+function spaceToggles(event, pointerOverBoard) {
   if (focusedCardEl === null) return false
   if (focusedCardEl.dataset.type === 'group') return false
   if (wrapperEl.inert) return false
@@ -2015,7 +2015,10 @@ function spaceEnlarges(event, pointerOverBoard) {
   return !isField(target)
 }
 
-/** Holding Space enlarges the focused card, and letting it go puts the card back. */
+/**
+ * A press of Space enlarges the focused card, and the next press puts it back,
+ * as the focus leaving the card does.
+ */
 function installEnlargeKey() {
   let pointerOverBoard = false
   let spaceHeld = false
@@ -2028,28 +2031,29 @@ function installEnlargeKey() {
 
   document.addEventListener('keydown', event => {
     if (event.code !== 'Space') return
-    if (!spaceEnlarges(event, pointerOverBoard)) return
+    if (!spaceToggles(event, pointerOverBoard)) return
 
     // Space would scroll the page, or press the button that has the keyboard focus.
     event.preventDefault()
     if (event.repeat) return
     spaceHeld = true
-    enlargeCard(focusedCardEl)
+    if (enlargedCardEl === focusedCardEl) restoreEnlargedCard()
+    else enlargeCard(focusedCardEl)
   })
 
+  // A button that has the keyboard focus is pressed as Space goes up, so the
+  // board keeps the release of a press it took.
   document.addEventListener('keyup', event => {
     if (event.code !== 'Space') return
     if (!spaceHeld) return
 
     spaceHeld = false
     event.preventDefault()
-    restoreEnlargedCard()
   })
 
   // Space let go in another window never reaches this one.
   window.addEventListener('blur', () => {
     spaceHeld = false
-    restoreEnlargedCard()
   })
 }
 
