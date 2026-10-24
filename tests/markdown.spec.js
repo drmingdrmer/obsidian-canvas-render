@@ -177,19 +177,19 @@ test('markdownElement keeps KaTeX output whole', async ({ page }) => {
   }
 })
 
-test('a wikilink to a note on the board fits the view to its card', async ({ page }) => {
+test('Alt+click on a wikilink to a note on the board flies the view to its card, with no preview', async ({ page }) => {
   const nodes = [
     { id: 'a', type: 'file', file: 'pages/a.md', x: 0, y: 0, width: 300, height: 150 },
     { id: 'b', type: 'file', file: 'pages/b.md', x: 600, y: 0, width: 200, height: 100 },
   ]
   await openBoard(page, { nodes }, { 'pages/a.md': 'See [[B]].', 'pages/b.md': 'b body' })
-  await page.locator('.internal-link').click()
+  await page.locator('.internal-link').click({ modifiers: ['Alt'] })
 
   // B's 200 × 100 card, centred at zoom 1 in the 1280 × 720 viewport.
-  const shown = await page.evaluate(() => ({ ...view }))
-  expect(shown).toEqual({ x: -60, y: 310, zoom: 1 })
+  await expect.poll(() => page.evaluate(() => ({ ...view }))).toEqual({ x: -60, y: 310, zoom: 1 })
   await expect(page.locator('.canvas-node').nth(1)).toHaveAttribute('data-focused', 'true')
   await expect(page).toHaveURL(`${ORIGIN}?canvas=board/board.canvas&focus=b`)
+  await expect(page.locator('#card-preview')).toBeHidden()
 })
 
 test('a wikilink to a note not on the board opens it on its own, looked for beside the linking document', async ({ page }) => {

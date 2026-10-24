@@ -100,6 +100,27 @@ const TEXT_SCALE_STEP = 2 ** (1 / 7)
 const ENLARGED_MIN_SIZE = CARD_SIZES.wide
 const ENLARGED_MARGIN = 16
 
+/**
+ * A card preview is as wide as a card in Wide, and at most as tall. It opens
+ * PREVIEW_GAP below the link that names the card, or above it when there is
+ * more room there, and stays PREVIEW_GAP clear of the board's edges.
+ */
+const PREVIEW_SIZE = CARD_SIZES.wide
+const PREVIEW_GAP = 8
+
+/**
+ * A move to another card flies the view there on the path van Wijk and Nuij
+ * give in "Smooth and efficient zooming and panning": it zooms out as it pans,
+ * and back in as it lands, so that the way between the two cards stays in
+ * sight. FLIGHT_RHO, their ρ, sets how far out it goes. Each unit of the path's
+ * length takes FLIGHT_MS_PER_UNIT, and a flight lasts from FLIGHT_MIN_MS to
+ * FLIGHT_MAX_MS.
+ */
+const FLIGHT_RHO = Math.SQRT2
+const FLIGHT_MS_PER_UNIT = 400
+const FLIGHT_MIN_MS = 500
+const FLIGHT_MAX_MS = 1500
+
 /** Wheel delta that doubles the zoom, divided by ln 2. Larger means gentler. */
 const ZOOM_WHEEL_SENSITIVITY = 400
 
@@ -197,6 +218,15 @@ const BOARD_MARKUP = `
   <div class="file-view-body" id="file-view-body"></div>
 </div>
 
+<div class="card-preview" id="card-preview" hidden>
+  <div class="card-preview-header">
+    <span class="card-preview-title" id="card-preview-title"></span>
+    <button class="card-preview-button card-preview-go" id="card-preview-go" title="Fly to this card on the board">Go to card</button>
+    <button class="card-preview-button" id="card-preview-close" title="Close the preview">&times;</button>
+  </div>
+  <div class="card-preview-body" id="card-preview-body"></div>
+</div>
+
 <div class="canvas-status" id="status" hidden></div>
 `
 
@@ -224,6 +254,11 @@ const fileViewBackEl = boardFragment.getElementById('file-view-back')
 const fileViewPathEl = boardFragment.getElementById('file-view-path')
 const fileViewToggleEl = boardFragment.getElementById('file-view-toggle')
 const fileViewBodyEl = boardFragment.getElementById('file-view-body')
+const cardPreviewEl = boardFragment.getElementById('card-preview')
+const cardPreviewTitleEl = boardFragment.getElementById('card-preview-title')
+const cardPreviewGoEl = boardFragment.getElementById('card-preview-go')
+const cardPreviewCloseEl = boardFragment.getElementById('card-preview-close')
+const cardPreviewBodyEl = boardFragment.getElementById('card-preview-body')
 
 // --------------------------------------------------------------------- state
 
@@ -649,11 +684,11 @@ function linkedCard(linkPath) {
 }
 
 /**
- * A wikilink to a note that has a card on the board fits the view to that card.
- * Any other opens the note on its own, looked for beside the document the link
- * is written in, as Obsidian looks first; a click with a modifier key opens the
- * link as the browser would. A link to a heading of its own document leads
- * nowhere.
+ * A wikilink to a note that has a card on the board shows that card in the
+ * preview, and with Alt held flies the view to the card. Any other opens the
+ * note on its own, looked for beside the document the link is written in, as
+ * Obsidian looks first; a click with ⌘, Ctrl or Shift opens the link as the
+ * browser would. A link to a heading of its own document leads nowhere.
  */
 function linkWikilink(link, documentPath) {
   const linkPath = link.title.split('#')[0].trim()
@@ -669,8 +704,13 @@ function linkWikilink(link, documentPath) {
     if (node === null) return
 
     event.preventDefault()
+    if (!event.altKey) {
+      showCardPreview(node, link)
+      return
+    }
+    closeCardPreview()
     closeFileView()
-    showCard(node)
+    flyToCard(node)
   })
   // After the listener above, so that a card on the board wins.
   showOnPlainClick(link, () => openFile(path, 'note'))
@@ -1152,11 +1192,8 @@ function scaleText(nextTextScale) {
   scheduleViewUrl()
 }
 
-/**
- * Fits the bounds into the viewport, at zoom 1 at most, and remembers what was
- * fitted: the whole board, or the one node passed in.
- */
-function fitToContent(bounds, node = null) {
+/** The view that fits the bounds into the viewport, at zoom 1 at most. */
+function fitView(bounds) {
   const rect = wrapperEl.getBoundingClientRect()
   const contentWidth = bounds.maxX - bounds.minX
   const contentHeight = bounds.maxY - bounds.minY
@@ -1168,11 +1205,22 @@ function fitToContent(bounds, node = null) {
   const scaleY = availableHeight / Math.max(contentHeight, 1)
   const scale = Math.min(scaleX, scaleY, FIT_MAX_ZOOM)
 
-  view.zoom = scale
+  const x = rect.width / 2 - (bounds.minX + contentWidth / 2) * scale
+  const y = rect.height / 2 - (bounds.minY + contentHeight / 2) * scale
+  return { x, y, zoom: scale }
+}
+
+/**
+ * Fits the bounds into the viewport, at zoom 1 at most, and remembers what was
+ * fitted: the whole board, or the one node passed in.
+ */
+function fitToContent(bounds, node = null) {
+  const fitted = fitView(bounds)
+  view.zoom = fitted.zoom
   // A card fitted on its own leaves the floor where the board's fit put it.
-  if (node === null) zoomFloor = Math.min(MIN_ZOOM, scale)
-  view.x = rect.width / 2 - (bounds.minX + contentWidth / 2) * view.zoom
-  view.y = rect.height / 2 - (bounds.minY + contentHeight / 2) * view.zoom
+  if (node === null) zoomFloor = Math.min(MIN_ZOOM, fitted.zoom)
+  view.x = fitted.x
+  view.y = fitted.y
   applyView()
   fittedView = { x: view.x, y: view.y, zoom: view.zoom, node: node }
 }
@@ -1233,6 +1281,122 @@ function showCard(node) {
   focusCard(layout.elements.get(node.id))
 }
 
+/**
+ * Puts the focus on one card as `showCard` does, but flies the view to it, so
+ * that the reader sees where on the board the card sits.
+ */
+function flyToCard(node) {
+  focusCard(layout.elements.get(node.id))
+  const target = fitView(contentBounds([node]))
+  // The card may change size on the way, so the landing fits it afresh.
+  flyView(target, () => fitToContent(contentBounds([node]), node))
+}
+
+/** The id of the flight's next animation frame, which a new flight cancels. */
+let flightFrame = 0
+
+/**
+ * Moves the view to `target`, `{ x, y, zoom }`, along `flightPath`, and calls
+ * `land` at the end. A press on the board, or anything else that moves the view
+ * on the way, such as a wheel or a button, ends the flight where the view is.
+ * With reduced motion asked for, the view lands at once.
+ */
+function flyView(target, land) {
+  cancelAnimationFrame(flightFrame)
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (reducedMotion) {
+    land()
+    return
+  }
+
+  const rect = wrapperEl.getBoundingClientRect()
+  // The longer side of the viewport measures how much of the canvas is in sight.
+  const size = Math.max(rect.width, rect.height)
+  const viewport = { centreX: rect.width / 2, centreY: rect.height / 2, size: size }
+  const path = flightPath(viewSpan(view, viewport), viewSpan(target, viewport))
+  const pathTime = path.length * FLIGHT_MS_PER_UNIT
+  const duration = Math.min(Math.max(pathTime, FLIGHT_MIN_MS), FLIGHT_MAX_MS)
+  const start = performance.now()
+  let shown = { ...view }
+
+  const step = now => {
+    const moved = view.x !== shown.x || view.y !== shown.y || view.zoom !== shown.zoom
+    if (moved) return
+    // A frame's time can be a little earlier than the start.
+    const elapsed = Math.max(now - start, 0)
+    const t = Math.min(elapsed / duration, 1)
+    if (t === 1) {
+      land()
+      return
+    }
+
+    const span = path.at(easeInOut(t))
+    view.zoom = viewport.size / span.width
+    view.x = viewport.centreX - span.x * view.zoom
+    view.y = viewport.centreY - span.y * view.zoom
+    applyView()
+    shown = { ...view }
+    flightFrame = requestAnimationFrame(step)
+  }
+  flightFrame = requestAnimationFrame(step)
+}
+
+/**
+ * A view as `flightPath` takes it: the canvas point at the viewport's centre,
+ * and the width of canvas that `viewport.size` screen pixels span.
+ */
+function viewSpan(at, viewport) {
+  const x = (viewport.centreX - at.x) / at.zoom
+  const y = (viewport.centreY - at.y) / at.zoom
+  const width = viewport.size / at.zoom
+  return { x, y, width }
+}
+
+/**
+ * The path from one view to another, each a `viewSpan`, as van Wijk and Nuij
+ * give it and d3's `interpolateZoom` writes it. `at(t)` is the view a fraction
+ * `t` of the way along, and `length` is how long the path is.
+ */
+function flightPath(from, to) {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const distance = Math.hypot(dx, dy)
+  const rho2 = FLIGHT_RHO * FLIGHT_RHO
+
+  // Two views of one point differ in their zoom alone.
+  if (distance < 1e-6) {
+    const zoomLength = Math.log(to.width / from.width) / FLIGHT_RHO
+    const atPoint = t => {
+      const width = from.width * Math.exp(FLIGHT_RHO * t * zoomLength)
+      return { x: from.x + t * dx, y: from.y + t * dy, width }
+    }
+    return { at: atPoint, length: Math.abs(zoomLength) }
+  }
+
+  const widthGap = to.width * to.width - from.width * from.width
+  const panTerm = rho2 * rho2 * distance * distance
+  const b0 = (widthGap + panTerm) / (2 * from.width * rho2 * distance)
+  const b1 = (widthGap - panTerm) / (2 * to.width * rho2 * distance)
+  const r0 = -Math.asinh(b0)
+  const r1 = -Math.asinh(b1)
+  const length = (r1 - r0) / FLIGHT_RHO
+  const at = t => {
+    const r = FLIGHT_RHO * t * length + r0
+    const swing = Math.cosh(r0) * Math.tanh(r) - Math.sinh(r0)
+    const along = from.width / (rho2 * distance) * swing
+    const width = from.width * Math.cosh(r0) / Math.cosh(r)
+    return { x: from.x + along * dx, y: from.y + along * dy, width }
+  }
+  return { at, length }
+}
+
+/** Starts slow, speeds up, and slows down again to land: d3's cubic in-out. */
+function easeInOut(t) {
+  if (t < 0.5) return 4 * t * t * t
+  const rest = 2 - 2 * t
+  return 1 - rest * rest * rest / 2
+}
+
 /** A wheel scrolls a card's content only over the card the focus is on. */
 function wheelScrollsCard(target) {
   if (focusedCardEl === null) return false
@@ -1272,6 +1436,8 @@ function installViewportControls() {
     if (event.button !== 0 && event.button !== 1) return
     if (event.button === 0 && isInteractiveTarget(event.target)) return
 
+    // A press holds the board where it is, rather than where a flight takes it.
+    cancelAnimationFrame(flightFrame)
     panPointerId = event.pointerId
     panOriginX = event.clientX - view.x
     panOriginY = event.clientY - view.y
@@ -2057,6 +2223,100 @@ function installEnlargeKey() {
   })
 }
 
+// -------------------------------------------------------------- card preview
+
+/** The card the preview shows, or null while the preview is closed. */
+let previewedNode = null
+
+/**
+ * The box of the link that opened the preview, in pixels from the board's
+ * top-left corner. A link in the preview shows its card in the same place, as
+ * the card it names replaces the link.
+ */
+let previewAnchor = null
+
+/**
+ * Shows a file card in the preview, beside the link that names it, over the
+ * board and over a file shown on it. The preview draws the card's file afresh,
+ * at the text's own size, into an element of its own: a note still loading for
+ * an earlier preview then lands where nobody sees it.
+ */
+function showCardPreview(node, linkEl) {
+  const inPreview = cardPreviewEl.contains(linkEl)
+  if (!inPreview) {
+    const hostRect = hostEl.getBoundingClientRect()
+    const linkRect = linkEl.getBoundingClientRect()
+    const left = linkRect.left - hostRect.left
+    const top = linkRect.top - hostRect.top
+    previewAnchor = { left, top, bottom: top + linkRect.height }
+  }
+  previewedNode = node
+  cardPreviewTitleEl.textContent = nodeTitleText(node)
+  const contentEl = document.createElement('div')
+  contentEl.className = 'card-preview-content'
+  fillFileNode(contentEl, node)
+  cardPreviewBodyEl.replaceChildren(contentEl)
+  cardPreviewEl.hidden = false
+  placeCardPreview()
+}
+
+/**
+ * Places the preview below its anchor, or above it when there is more room
+ * there, PREVIEW_GAP clear of the anchor and of the board's edges.
+ */
+function placeCardPreview() {
+  const hostRect = hostEl.getBoundingClientRect()
+  const width = Math.min(PREVIEW_SIZE.width, hostRect.width - PREVIEW_GAP * 2)
+  const maxLeft = hostRect.width - PREVIEW_GAP - width
+  const left = Math.max(Math.min(previewAnchor.left, maxLeft), PREVIEW_GAP)
+  cardPreviewEl.style.width = `${width}px`
+  cardPreviewEl.style.left = `${left}px`
+
+  const roomBelow = hostRect.height - previewAnchor.bottom - PREVIEW_GAP * 2
+  const roomAbove = previewAnchor.top - PREVIEW_GAP * 2
+  const below = roomBelow >= PREVIEW_SIZE.maxHeight || roomBelow >= roomAbove
+  const room = below ? roomBelow : roomAbove
+  const height = Math.min(PREVIEW_SIZE.maxHeight, room)
+  cardPreviewEl.style.maxHeight = `${height}px`
+  // An iframe has no height of its own, so a preview holding one takes all of its own.
+  cardPreviewEl.style.height = holdsEmbed(previewedNode) ? `${height}px` : ''
+  cardPreviewEl.style.top = below ? `${previewAnchor.bottom + PREVIEW_GAP}px` : ''
+  cardPreviewEl.style.bottom = below ? '' : `${hostRect.height - previewAnchor.top + PREVIEW_GAP}px`
+}
+
+function closeCardPreview() {
+  previewedNode = null
+  cardPreviewEl.hidden = true
+  cardPreviewBodyEl.replaceChildren()
+}
+
+/**
+ * Go to card flies the view to the card the preview shows. The preview closes
+ * on its × button, on Escape, and on a press anywhere outside it, which is also
+ * how a press on another link replaces it.
+ */
+function installCardPreview() {
+  cardPreviewGoEl.addEventListener('click', () => {
+    const node = previewedNode
+    closeCardPreview()
+    closeFileView()
+    flyToCard(node)
+  })
+  cardPreviewCloseEl.addEventListener('click', closeCardPreview)
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeCardPreview()
+  })
+  // In the capture phase, as a press on a card's title row goes no further.
+  document.addEventListener(
+    'pointerdown',
+    event => {
+      const inPreview = event.composedPath().includes(cardPreviewEl)
+      if (!inPreview) closeCardPreview()
+    },
+    true,
+  )
+}
+
 // -------------------------------------------------------------------- search
 
 /** What a search result calls a card: the name or label it shows, or its first line. */
@@ -2097,7 +2357,7 @@ function searchCards(query) {
 
 function pickSearchResult(node) {
   searchResultsEl.hidden = true
-  showCard(node)
+  flyToCard(node)
 }
 
 function searchResultElement(node) {
@@ -2129,7 +2389,7 @@ function showSearchResults() {
 
 /**
  * Typing lists the matching cards above the box; picking one, or pressing
- * Enter for the first, fits the view to it. A press anywhere else closes the
+ * Enter for the first, flies the view to it. A press anywhere else closes the
  * list and keeps the query, so a click in the box brings the list back.
  */
 function installSearch() {
@@ -2355,6 +2615,8 @@ async function showFileView(path, mode) {
   const isRaw = mode === 'raw'
   const file = { path: path, mode: mode }
   shownFile = file
+  // A link in the preview that opens a file takes the reader on from the preview.
+  closeCardPreview()
 
   if (config.ownsPage) document.title = path
   fileViewPathEl.textContent = path
@@ -2475,6 +2737,7 @@ async function main(params) {
   installSearch()
   installGridSnapControl()
   installEnlargeKey()
+  installCardPreview()
 }
 
 /** Appends `el`, a `<link>` or a `<script>`, to `parent`, and resolves once the file at `url` has loaded. */

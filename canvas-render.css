@@ -772,6 +772,90 @@
   overflow-wrap: break-word;
 }
 
+/* ---------- card preview ---------- */
+
+/* A card a wikilink names, shown beside the link, over the board and over a
+   file shown on it. `placeCardPreview` sets its width, its height and its
+   place. Its text is at its own size, whatever size the board draws text at. */
+.card-preview {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  --text-scale: 1;
+}
+
+/* `display: flex` above would otherwise outrank the browser's own rule for `hidden`. */
+.card-preview[hidden] {
+  display: none;
+}
+
+.card-preview-header {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 6px 6px 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.card-preview-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card-preview-button {
+  flex: none;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* The way on from the preview to the board. */
+.card-preview-go {
+  color: var(--text-accent);
+}
+
+.card-preview-button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.card-preview-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border-radius: 0 0 8px 8px;
+  overscroll-behavior: contain;
+}
+
+.card-preview-content {
+  padding: 12px 16px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* An image or an iframe fills the preview, as it fills its card. */
+.card-preview-content[data-fill="true"] {
+  height: 100%;
+  padding: 0;
+}
+
 /* ---------- status ---------- */
 
 .canvas-status {

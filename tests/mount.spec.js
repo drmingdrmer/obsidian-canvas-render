@@ -205,13 +205,30 @@ test('the source icon and the toggle of a mounted board switch the note in place
   expect(page.url()).toBe(POST_URL)
 })
 
-test('a wikilink in the note view opens a note without a card there, and one with a card on the board', async ({ page }) => {
+test('a wikilink in the note view opens a note without a card there, and previews one with a card on the board', async ({ page }) => {
   await openPost(page)
   await page.locator('.canvas-node-title-link').first().click()
   await page.locator('#file-view-body .internal-link[title="m"]').click()
   await expect(page.locator('#file-view-body h1')).toHaveText('M')
 
-  await page.locator('#file-view-body .internal-link[title="n"]').click()
+  const link = page.locator('#file-view-body .internal-link[title="n"]')
+  await link.click()
+  const preview = page.locator('#card-preview')
+  await expect(preview.locator('h1')).toHaveText('Note')
+  // The board sits 100 px in and 300 px down the page, and the preview 8 px below the link.
+  const linkBox = await link.boundingBox()
+  const box = await preview.boundingBox()
+  expect(box.x).toBeCloseTo(linkBox.x, 1)
+  expect(box.y).toBeCloseTo(linkBox.y + linkBox.height + 8, 1)
+
+  // A link in the preview to a note without a card opens the note in the note view.
+  await preview.locator('.internal-link[title="m"]').click()
+  await expect(preview).toBeHidden()
+  await expect(page.locator('#file-view-body h1')).toHaveText('M')
+
+  await link.click()
+  await page.locator('#card-preview-go').click()
+  await expect(preview).toBeHidden()
   await expect(page.locator('#file-view')).toBeHidden()
   await expect(page.locator('.canvas-node[data-type="file"]')).toHaveAttribute('data-focused', 'true')
 })
