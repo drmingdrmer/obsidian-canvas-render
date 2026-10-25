@@ -6,7 +6,7 @@ Render Obsidian `.canvas` files on the web, close to how Obsidian draws them —
 
 **[Live demo](https://drmingdrmer.github.io/obsidian-canvas-render/)**
 
-The file format is [JSON Canvas](https://jsoncanvas.org), the open spec Obsidian publishes under the MIT license. Obsidian's own renderer cannot be reused — it is minified into `app.js` inside `obsidian.asar` and wired to Obsidian's internal Vault, Workspace and MarkdownRenderer objects — so this is a fresh implementation against the spec: no build step, nothing to install, three files a browser loads directly.
+The file format is [JSON Canvas](https://jsoncanvas.org), the open spec Obsidian publishes under the MIT license. Obsidian's own renderer cannot be reused — it is minified into `app.js` inside `obsidian.asar` and wired to Obsidian's internal Vault, Workspace and MarkdownRenderer objects — so this is a fresh implementation against the spec: no build step, nothing to install, plain ES modules a browser loads directly.
 
 A board is read, not edited: it pans and zooms, cards move and resize, and nothing is written back to the `.canvas` file. Serving a canvas, deploying, the URL parameters and the controls are all in **[USAGE.md](USAGE.md)**. What a card's colour, an edge's sides and an edge's colour mean on a board is in **[CONVENTIONS.md](CONVENTIONS.md)**.
 
