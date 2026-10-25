@@ -10,7 +10,10 @@ import {
   SIDE_NORMALS, sideAnchor, inferSide, edgeGeometry, bezierPoint, arrowPoints, contentBounds,
   viewSpan, flightPath, easeInOut, meetsRect, sideBeyond, lastExit, freeStretches, nearestFit,
 } from './src/geometry.js'
-import { encodePath, fileExtension, baseName, fetchFile, webUrl, directoryOf, createResources } from './src/resources.js'
+import { encodePath, fetchFile, createResources } from './src/resources.js'
+import { SVG_NAMESPACE, createElements, createIcon, placeholderElement } from './src/elements.js'
+import { createMarkdown } from './src/markdown.js'
+import { resolveColor, nodeTitleText, holdsEmbed, createCardRenderer } from './src/cards.js'
 
 // ---------------------------------------------------------------- constants
 
@@ -60,23 +63,6 @@ const CARD_SIZE_NAMES = Object.keys(CARD_SIZES)
  * own content, so extending the list is a trust decision.
  */
 const REMOTE_HOSTS = ['raw.githubusercontent.com']
-
-/**
- * marked passes raw HTML through untouched, so rendered markdown goes through
- * DOMPurify. KaTeX writes every formula in MathML as well as in HTML, and
- * `semantics` and `annotation` are the two of its elements DOMPurify drops by
- * default.
- */
-const SANITIZE_OPTIONS = { ADD_TAGS: ['semantics', 'annotation'], RETURN_DOM_FRAGMENT: true }
-
-/**
- * A link card frames a page from any host. The page runs as it would in a tab
- * of its own, but cannot navigate this page or open dialogs over it. A page on
- * this page's own origin could lift the sandbox, but such a page comes from
- * this site. File cards get no sandbox: Chrome refuses to show a PDF in a
- * sandboxed frame.
- */
-const LINK_FRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
 
 const GRID_SIZE = 20
 /** The closest two background dots are drawn, in screen pixels; each dot is 2 px across. */
@@ -173,148 +159,22 @@ const VIEW_URL_DELAY = 300
 /** Extra room around the node bounding box so bowed edges are not clipped. */
 const EDGE_LAYER_MARGIN = 400
 
-/** Obsidian's six preset canvas colors, keyed by the string used in the file. */
-const PRESET_COLORS = {
-  '1': '#fb464c',
-  '2': '#e9973f',
-  '3': '#e0de71',
-  '4': '#44cf6e',
-  '5': '#53dfdd',
-  '6': '#a882ff',
-}
-
 const OPPOSITE_SIDES = { top: 'bottom', right: 'left', bottom: 'top', left: 'right' }
-
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'avif']
-
-const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
 // ------------------------------------------------------------------ elements
 
-/** The board's elements, built once; `mount` moves them into the shadow root it attaches. */
-const BOARD_MARKUP = `
-<div class="canvas-wrapper" id="wrapper">
-  <div class="canvas-background" id="background"></div>
-
-  <div class="canvas" id="canvas">
-    <svg class="canvas-edges" id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
-    <div class="canvas-neighbours" id="neighbours">
-      <svg class="canvas-neighbour-links" id="neighbour-links" xmlns="http://www.w3.org/2000/svg"></svg>
-    </div>
-  </div>
-
-  <div class="canvas-margin" id="margin"></div>
-
-  <div class="canvas-controls">
-    <div class="canvas-control-group canvas-search">
-      <input class="canvas-search-input" id="search" type="search" placeholder="Search cards"
-        title="Find a card by its name or text" aria-label="Search cards" autocomplete="off" spellcheck="false">
-      <div class="canvas-search-results" id="search-results" hidden></div>
-    </div>
-
-    <span class="canvas-control-divider"></span>
-    <span class="canvas-control-group">
-      <button class="canvas-control-item" id="zoom-out" title="Zoom out">&minus;</button>
-      <button class="canvas-control-item" id="zoom-reset" title="Reset to 100%">100%</button>
-      <button class="canvas-control-item" id="zoom-in" title="Zoom in">&plus;</button>
-      <button class="canvas-control-item" id="zoom-fit" title="Fit to content">Fit</button>
-    </span>
-
-    <span class="canvas-control-divider"></span>
-    <span class="canvas-control-group">
-      <button class="canvas-control-item" id="text-smaller" title="Smaller text">&minus;</button>
-      <button class="canvas-control-item" id="text-reset" title="Reset the text to 1×">1×</button>
-      <button class="canvas-control-item" id="text-larger" title="Larger text">&plus;</button>
-    </span>
-
-    <span class="canvas-control-divider"></span>
-    <span class="canvas-control-group">
-      <button class="canvas-control-item" data-card-size="actual" title="Cards at the size the file stores">Actual</button>
-      <button class="canvas-control-item" data-card-size="wide" title="Every card at one wide size">Wide</button>
-      <button class="canvas-control-item" data-card-size="compact" title="Every card at one compact size">Compact</button>
-    </span>
-
-    <span class="canvas-control-divider"></span>
-    <button class="canvas-control-item" id="grid-snap" title="Land a dragged card on the grid">Grid</button>
-
-    <span class="canvas-control-divider"></span>
-    <button class="canvas-control-item" id="history-toggle" title="Show the cards the focus has been on">History</button>
-
-    <span class="canvas-control-divider"></span>
-    <button class="canvas-control-item theme-toggle" title="Toggle light and dark theme">☾</button>
-  </div>
-
-  <div class="canvas-history" id="history" hidden>
-    <div class="canvas-history-title">History</div>
-    <div class="canvas-history-list" id="history-list"></div>
-  </div>
-</div>
-
-<div class="file-view" id="file-view" hidden>
-  <div class="file-view-header">
-    <button class="file-view-back" id="file-view-back" title="Back to the board" hidden>←</button>
-    <span class="file-view-path" id="file-view-path"></span>
-    <a class="file-view-toggle" id="file-view-toggle"></a>
-    <button class="file-view-theme theme-toggle" title="Toggle light and dark theme">☾</button>
-  </div>
-  <div class="file-view-body" id="file-view-body"></div>
-</div>
-
-<div class="card-preview" id="card-preview" hidden>
-  <div class="card-preview-header">
-    <span class="card-preview-title" id="card-preview-title"></span>
-    <button class="card-preview-button card-preview-go" id="card-preview-go" title="Fly to this card on the board">Go to card</button>
-    <button class="card-preview-button" id="card-preview-close" title="Close the preview">&times;</button>
-  </div>
-  <div class="card-preview-body" id="card-preview-body"></div>
-</div>
-
-<div class="canvas-status" id="status" hidden></div>
-`
-
-const boardFragment = document.createRange().createContextualFragment(BOARD_MARKUP)
-const wrapperEl = boardFragment.getElementById('wrapper')
-const backgroundEl = boardFragment.getElementById('background')
-const canvasEl = boardFragment.getElementById('canvas')
-const edgesEl = boardFragment.getElementById('edges')
-const neighboursEl = boardFragment.getElementById('neighbours')
-const neighbourLinksEl = boardFragment.getElementById('neighbour-links')
-const marginEl = boardFragment.getElementById('margin')
-const statusEl = boardFragment.getElementById('status')
-const controlsEl = boardFragment.querySelector('.canvas-controls')
-const zoomInEl = boardFragment.getElementById('zoom-in')
-const zoomOutEl = boardFragment.getElementById('zoom-out')
-const zoomResetEl = boardFragment.getElementById('zoom-reset')
-const zoomFitEl = boardFragment.getElementById('zoom-fit')
-const textSmallerEl = boardFragment.getElementById('text-smaller')
-const textResetEl = boardFragment.getElementById('text-reset')
-const textLargerEl = boardFragment.getElementById('text-larger')
-const cardSizeEls = boardFragment.querySelectorAll('[data-card-size]')
-const gridSnapEl = boardFragment.getElementById('grid-snap')
-const historyToggleEl = boardFragment.getElementById('history-toggle')
-const historyEl = boardFragment.getElementById('history')
-const historyListEl = boardFragment.getElementById('history-list')
-const searchEl = boardFragment.getElementById('search')
-const searchResultsEl = boardFragment.getElementById('search-results')
-const themeToggleEls = boardFragment.querySelectorAll('.theme-toggle')
-const fileViewEl = boardFragment.getElementById('file-view')
-const fileViewBackEl = boardFragment.getElementById('file-view-back')
-const fileViewPathEl = boardFragment.getElementById('file-view-path')
-const fileViewToggleEl = boardFragment.getElementById('file-view-toggle')
-const fileViewBodyEl = boardFragment.getElementById('file-view-body')
-const cardPreviewEl = boardFragment.getElementById('card-preview')
-const cardPreviewTitleEl = boardFragment.getElementById('card-preview-title')
-const cardPreviewGoEl = boardFragment.getElementById('card-preview-go')
-const cardPreviewCloseEl = boardFragment.getElementById('card-preview-close')
-const cardPreviewBodyEl = boardFragment.getElementById('card-preview-body')
+const {
+  boardFragment, wrapperEl, backgroundEl, canvasEl, edgesEl, neighboursEl, neighbourLinksEl, marginEl, statusEl,
+  controlsEl, zoomInEl, zoomOutEl, zoomResetEl, zoomFitEl, textSmallerEl, textResetEl, textLargerEl, cardSizeEls,
+  gridSnapEl, historyToggleEl, historyEl, historyListEl, searchEl, searchResultsEl, themeToggleEls, fileViewEl,
+  fileViewBackEl, fileViewPathEl, fileViewToggleEl, fileViewBodyEl, cardPreviewEl, cardPreviewTitleEl,
+  cardPreviewGoEl, cardPreviewCloseEl, cardPreviewBodyEl,
+} = createElements()
 
 // --------------------------------------------------------------------- state
 
 /** The element `mount` drew the board in, null until then; it carries the theme and the view mode. */
 let hostEl = null
-
-/** The board's own marked, made by `main`, so that a page's own `marked` keeps its options. */
-let markdownParser = null
 
 /** Screen position of canvas origin, plus the current scale factor. */
 const view = { x: 0, y: 0, zoom: 1 }
@@ -353,8 +213,18 @@ const config = {
 const layout = { nodes: [], elements: new Map(), edgesByNode: new Map(), authoredSizes: new Map() }
 
 /** The paths and links of the board's files, as `main` sets `config` up for them. */
-const { vaultUrl, noteHref, rawHref, imageUrls, assertAllowedHost, resolveVaultRoot, resolveAttachments } =
-  createResources(config, APP_URL, REMOTE_HOSTS)
+const resources = createResources(config, APP_URL, REMOTE_HOSTS)
+const { noteHref, rawHref, assertAllowedHost, resolveVaultRoot, resolveAttachments } = resources
+
+/** The board's markdown, which `main` starts once marked, KaTeX and DOMPurify have loaded. */
+const markdown = createMarkdown(resources, {
+  linkedCard, showCardPreview, closeCardPreview, closeFileView, flyToCard, showOnPlainClick, openFile,
+})
+const { startMarkdown, renderMarkdown, markdownElement } = markdown
+
+/** What the board draws in a card, and in the card preview. */
+const { fillFileNode, fillNodeElement, fillNodeContent } =
+  createCardRenderer(config, REMOTE_HOSTS, resources, markdown, { showOnPlainClick, openFile })
 
 // --------------------------------------------------------------------- theme
 
@@ -387,176 +257,7 @@ function installThemeToggles() {
   }
 }
 
-// ------------------------------------------------------------------ markdown
-
-/** `$$tex$$` on lines of its own. */
-const MATH_BLOCK = /^\$\$([\s\S]+?)\$\$[ \t]*(?:\n|$)/
-
-/** `$$tex$$` inside a line of text. */
-const MATH_DISPLAY = /^\$\$([\s\S]+?)\$\$/
-
-/** `$tex$`. It must end in a non-space character, so that `between $5 and $10` stays text. */
-const MATH_INLINE = /^\$((?:[^$\\\n]|\\.)*?(?:[^\s$\\]|\\.))\$/
-
-const WIKILINK = /^\[\[([^[\]]+?)\]\]/
-
-function escapeHtml(text) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function stripFrontmatter(source) {
-  const match = source.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
-  if (!match) return source
-  return source.slice(match[0].length)
-}
-
-/**
- * `[[target|alias]]` and `[[target#heading]]` become a link with no destination
- * yet: where it leads depends on the document it is written in, which
- * `linkWikilink` knows.
- */
-function wikilinkToHtml(body) {
-  const pipeIndex = body.indexOf('|')
-  const hasAlias = pipeIndex >= 0
-  const target = hasAlias ? body.slice(0, pipeIndex) : body
-  const alias = hasAlias ? body.slice(pipeIndex + 1) : ''
-  // `Note#Heading` reads `Note > Heading`, as in Obsidian's reading view.
-  const sections = target.split('#').map(section => section.trim())
-  const targetLabel = sections.filter(section => section !== '').join(' > ')
-  const label = alias.trim() === '' ? targetLabel : alias.trim()
-  return `<a class="internal-link" title="${escapeHtml(target.trim())}">${escapeHtml(label)}</a>`
-}
-
-function renderMath(item) {
-  return katex.renderToString(item.body, {
-    displayMode: item.display,
-    throwOnError: false,
-    strict: false,
-  })
-}
-
-/**
- * Math and wikilinks are marked's own syntax, so marked keeps them literal in
- * code, as Obsidian does, and no other markdown rule reaches inside a formula
- * to take its `_`, `*` or `\` for emphasis or an escape.
- *
- * A formula on lines of its own is a block: it ends the paragraph above it,
- * and a `---` under it is a rule rather than the underline of a heading.
- */
-const MARKDOWN_EXTENSIONS = [
-  {
-    name: 'mathBlock',
-    level: 'block',
-    start(src) {
-      const match = src.match(/^\$\$/m)
-      return match === null ? undefined : match.index
-    },
-    tokenizer(src) {
-      const match = src.match(MATH_BLOCK)
-      if (match === null) return undefined
-      return { type: 'mathBlock', raw: match[0], body: match[1], display: true }
-    },
-    renderer: token => `${renderMath(token)}\n`,
-  },
-  {
-    name: 'math',
-    level: 'inline',
-    start: src => src.indexOf('$'),
-    tokenizer(src) {
-      const display = src.match(MATH_DISPLAY)
-      if (display !== null) return { type: 'math', raw: display[0], body: display[1], display: true }
-
-      const inline = src.match(MATH_INLINE)
-      if (inline === null) return undefined
-      return { type: 'math', raw: inline[0], body: inline[1], display: false }
-    },
-    renderer: token => renderMath(token),
-  },
-  {
-    name: 'wikilink',
-    level: 'inline',
-    start: src => src.indexOf('[['),
-    tokenizer(src) {
-      const match = src.match(WIKILINK)
-      if (match === null) return undefined
-      return { type: 'wikilink', raw: match[0], body: match[1] }
-    },
-    renderer: token => wikilinkToHtml(token.body),
-  },
-]
-
-function renderMarkdown(source) {
-  const body = stripFrontmatter(source)
-  return markdownParser.parse(body)
-}
-
-/**
- * Keeps only the section a `#Heading` subpath points at. The headings are the
- * ones marked parses, so a `#` line inside code is none, and a setext heading
- * is one.
- */
-function sliceSubpath(markdown, subpath) {
-  if (!subpath) return markdown
-  if (!subpath.startsWith('#')) return markdown
-
-  const heading = subpath.slice(1).trim()
-  const blocks = markdownParser.lexer(markdown)
-  const isTargetHeading = block => {
-    if (block.type !== 'heading') return false
-    return block.text.trim() === heading
-  }
-
-  const startIndex = blocks.findIndex(isTargetHeading)
-  if (startIndex < 0) return markdown
-
-  const startDepth = blocks[startIndex].depth
-  let endIndex = blocks.length
-  for (let i = startIndex + 1; i < blocks.length; i += 1) {
-    const block = blocks[i]
-    if (block.type !== 'heading') continue
-    if (block.depth > startDepth) continue
-    endIndex = i
-    break
-  }
-
-  return blocks.slice(startIndex, endIndex).map(block => block.raw).join('')
-}
-
-// -------------------------------------------------------------------- colors
-
-function resolveColor(value) {
-  if (!value) return null
-  if (PRESET_COLORS[value]) return PRESET_COLORS[value]
-  if (value.startsWith('#')) return value
-  return null
-}
-
 // ------------------------------------------------------------- node contents
-
-/**
- * A relative image or link in markdown names a file beside the document it is
- * written in — the note, or the canvas for a text card — not beside this page.
- * The sanitized fragment is not in the page yet, so no image has been
- * requested from the wrong place.
- */
-function resolveReferences(fragment, documentPath) {
-  const baseUrl = new URL(encodePath(documentPath), window.location.href)
-  for (const link of fragment.querySelectorAll('a[href]')) {
-    const reference = link.getAttribute('href')
-    if (reference.startsWith('#')) continue
-
-    const resolved = URL.parse(reference, baseUrl)
-    if (resolved === null) continue
-    link.setAttribute('href', resolved.href)
-  }
-  // After the loop above, which would resolve their `?note=` against the document.
-  for (const link of fragment.querySelectorAll('a.internal-link')) linkWikilink(link, documentPath)
-  for (const image of fragment.querySelectorAll('img[src]')) loadImage(image, baseUrl)
-}
 
 /**
  * The file card a wikilink names: one whose path ends in the link's path, with
@@ -573,293 +274,7 @@ function linkedCard(linkPath) {
   return layout.nodes.find(isLinked) ?? null
 }
 
-/**
- * A wikilink to a note that has a card on the board shows that card in the
- * preview, and with Alt held flies the view to the card. Any other opens the
- * note on its own, looked for beside the document the link is written in, as
- * Obsidian looks first; a click with ⌘, Ctrl or Shift opens the link as the
- * browser would. A link to a heading of its own document leads nowhere.
- */
-function linkWikilink(link, documentPath) {
-  const linkPath = link.title.split('#')[0].trim()
-  if (linkPath === '') return
-
-  const notePath = fileExtension(linkPath) === 'md' ? linkPath : `${linkPath}.md`
-  const path = directoryOf(documentPath) + notePath
-  link.href = noteHref(path)
-  link.addEventListener('click', event => {
-    const hasModifier = event.metaKey || event.ctrlKey || event.shiftKey
-    if (hasModifier) return
-    const node = linkedCard(linkPath)
-    if (node === null) return
-
-    event.preventDefault()
-    if (!event.altKey) {
-      showCardPreview(node, link)
-      return
-    }
-    closeCardPreview()
-    closeFileView()
-    flyToCard(node)
-  })
-  // After the listener above, so that a card on the board wins.
-  showOnPlainClick(link, () => openFile(path, 'note'))
-}
-
-/**
- * Loads an image from the first of its URLs that answers. An image that none of
- * them loads names itself instead: with no alt text, a broken image collapses
- * to nothing, and the note reads on as if nothing were missing.
- */
-function loadImage(image, baseUrl) {
-  const reference = image.getAttribute('src')
-  const urls = imageUrls(reference, baseUrl)
-  let tried = 0
-  image.addEventListener('error', () => {
-    tried += 1
-    if (tried < urls.length) {
-      image.src = urls[tried]
-      return
-    }
-
-    const missingEl = document.createElement('span')
-    missingEl.className = 'missing-image'
-    missingEl.textContent = `Cannot load image ${reference}`
-    image.replaceWith(missingEl)
-  })
-  image.src = urls[0]
-}
-
-function markdownElement(html, documentPath) {
-  const el = document.createElement('div')
-  el.className = 'markdown-preview'
-  const fragment = DOMPurify.sanitize(html, SANITIZE_OPTIONS)
-  resolveReferences(fragment, documentPath)
-  el.append(fragment)
-  return el
-}
-
-function placeholderElement(message) {
-  const el = document.createElement('div')
-  el.className = 'canvas-node-placeholder'
-  el.textContent = message
-  return el
-}
-
-async function loadMarkdownInto(contentEl, node) {
-  const url = vaultUrl(node.file)
-  const response = await fetchFile(url, node.file)
-
-  const source = await response.text()
-  const section = sliceSubpath(source, node.subpath)
-  contentEl.replaceChildren(markdownElement(renderMarkdown(section), config.vaultRoot + node.file))
-}
-
-function fillFileNode(contentEl, node) {
-  const url = vaultUrl(node.file)
-  if (url === null) {
-    const hosts = REMOTE_HOSTS.join(', ')
-    const path = config.vaultRoot + node.file
-    const message = `A file card loads a same-origin path or an https URL on ${hosts}, not ${path}`
-    contentEl.replaceChildren(placeholderElement(message))
-    return
-  }
-
-  const extension = fileExtension(node.file)
-
-  if (IMAGE_EXTENSIONS.includes(extension)) {
-    const image = document.createElement('img')
-    image.className = 'canvas-node-image'
-    image.src = url
-    image.alt = node.file
-    contentEl.dataset.fill = 'true'
-    contentEl.replaceChildren(image)
-    return
-  }
-
-  if (holdsEmbed(node)) {
-    const frame = document.createElement('iframe')
-    frame.className = 'canvas-node-embed'
-    frame.src = url
-    contentEl.dataset.fill = 'true'
-    contentEl.replaceChildren(frame)
-    return
-  }
-
-  contentEl.replaceChildren(placeholderElement('Loading…'))
-  loadMarkdownInto(contentEl, node).catch(error => {
-    contentEl.replaceChildren(placeholderElement(error.message))
-  })
-}
-
-function fillLinkNode(contentEl, node) {
-  const url = webUrl(node.url)
-  if (url === null) {
-    contentEl.replaceChildren(placeholderElement(`A link card shows an http or https URL, not ${node.url}`))
-    return
-  }
-
-  const frame = document.createElement('iframe')
-  frame.className = 'canvas-node-embed'
-  frame.sandbox = LINK_FRAME_SANDBOX
-  frame.src = url
-  frame.loading = 'lazy'
-  frame.referrerPolicy = 'no-referrer'
-  contentEl.dataset.fill = 'true'
-  contentEl.replaceChildren(frame)
-}
-
 // -------------------------------------------------------------- node element
-
-/** Obsidian heads a file or link card with the file name, inside the card. */
-function nodeTitleText(node) {
-  if (node.type === 'file') return baseName(node.file)
-  return node.url
-}
-
-/** lucide `external-link`: the title opens a separate tab. */
-const EXTERNAL_LINK_ICON =
-  '<path d="M15 3h6v6"/><path d="M10 14 21 3"/>' +
-  '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/>'
-
-/** lucide `code`: the familiar mark for "show me the source". */
-const SOURCE_ICON = '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>'
-
-function createIcon(paths) {
-  const icon = document.createElementNS(SVG_NAMESPACE, 'svg')
-  icon.setAttribute('class', 'canvas-node-title-icon')
-  icon.setAttribute('viewBox', '0 0 24 24')
-  icon.setAttribute('fill', 'none')
-  icon.setAttribute('stroke', 'currentColor')
-  icon.setAttribute('stroke-width', '2')
-  icon.setAttribute('stroke-linecap', 'round')
-  icon.setAttribute('stroke-linejoin', 'round')
-  icon.innerHTML = paths
-  return icon
-}
-
-function createTitleLink(href, tooltip) {
-  const linkEl = document.createElement('a')
-  linkEl.className = 'canvas-node-title-link'
-  linkEl.href = href
-  linkEl.target = '_blank'
-  linkEl.rel = 'noopener'
-  linkEl.title = tooltip
-  return linkEl
-}
-
-/**
- * Two destinations per note card: the title text reads the note, the icon
- * beside it shows the markdown source. Both go through this page's own views
- * rather than straight at the `.md`, so the text stays correct whatever media
- * type the host serves markdown as. Those views read a file as text, so the
- * title of any other file — an image, a PDF — opens the file itself.
- */
-function createTitleElement(node) {
-  const titleEl = document.createElement('div')
-  titleEl.className = 'canvas-node-title'
-
-  const textEl = document.createElement('span')
-  textEl.className = 'canvas-node-title-text'
-  textEl.textContent = nodeTitleText(node)
-
-  // A card names a URL it refuses, with nothing to follow.
-  const isLink = node.type === 'link'
-  const url = isLink ? webUrl(node.url) : vaultUrl(node.file)
-  if (url === null) {
-    titleEl.appendChild(textEl)
-    return titleEl
-  }
-
-  // Each anchor is inline-sized, so only its own text and icon are clickable —
-  // not the empty remainder of the title row.
-  const isNote = !isLink && fileExtension(node.file) === 'md'
-  let primaryEl = null
-  if (isLink) {
-    primaryEl = createTitleLink(url, `Open ${node.url}`)
-  } else if (isNote) {
-    primaryEl = createTitleLink(noteHref(config.vaultRoot + node.file), `Read ${node.file}`)
-    showOnPlainClick(primaryEl, () => openFile(config.vaultRoot + node.file, 'note'))
-  } else {
-    primaryEl = createTitleLink(url, `Open ${node.file}`)
-  }
-
-  primaryEl.append(textEl, createIcon(EXTERNAL_LINK_ICON))
-  titleEl.appendChild(primaryEl)
-
-  if (!isNote) return titleEl
-
-  const sourceEl = createTitleLink(rawHref(config.vaultRoot + node.file), `View source of ${node.file}`)
-  sourceEl.classList.add('canvas-node-source-link')
-  showOnPlainClick(sourceEl, () => openFile(config.vaultRoot + node.file, 'raw'))
-  sourceEl.appendChild(createIcon(SOURCE_ICON))
-  titleEl.appendChild(sourceEl)
-  return titleEl
-}
-
-/**
- * Text nodes are commonly written title first, so the first line becomes the
- * card's header — but only when it is a paragraph in its own right. A line that
- * opens a list, a quote, a fence or a heading belongs to what follows it, and
- * lifting it out would leave both halves wrong. marked decides which, so the
- * header agrees with how the card renders.
- */
-function splitTextNode(text) {
-  const source = text || ''
-  const lines = source.split('\n')
-  const firstLine = lines[0].trim()
-  const body = lines.slice(1).join('\n')
-
-  const wholeCardWouldBeHeader = body.trim() === ''
-  if (firstLine === '' || wholeCardWouldBeHeader) return { header: null, body: source }
-  const firstBlock = markdownParser.lexer(source)[0]
-  if (firstBlock.type !== 'paragraph') return { header: null, body: source }
-
-  return { header: firstLine, body: body }
-}
-
-/**
- * The promoted line, drawn as a filled strip. A file card's title row is
- * transparent and holds links to the note, so the two headers stay apart at a
- * glance: this one is the card's own first sentence, not a name to click.
- */
-function createTextHeaderElement(line) {
-  const headerEl = document.createElement('div')
-  headerEl.className = 'canvas-node-header'
-  headerEl.appendChild(markdownElement(renderMarkdown(line), config.canvasPath))
-  return headerEl
-}
-
-/** Group frames carry their name above the frame; nothing sits inside them. */
-function createGroupLabelElement(node) {
-  const labelEl = document.createElement('div')
-  labelEl.className = 'canvas-node-label'
-  labelEl.textContent = node.label
-  return labelEl
-}
-
-/** JSON Canvas backgroundStyle values. A group that names none of them is drawn as `cover`. */
-const BACKGROUND_STYLES = ['cover', 'ratio', 'repeat']
-
-/**
- * A group's background image fills its frame as its backgroundStyle names:
- * `cover` crops the image to fill the frame, `ratio` shows the whole image at
- * its own proportions, and `repeat` tiles it at its own size.
- */
-function applyGroupBackground(el, node) {
-  const url = vaultUrl(node.background)
-  if (url === null) {
-    const hosts = REMOTE_HOSTS.join(', ')
-    const path = config.vaultRoot + node.background
-    console.warn(`group ${node.id}: a background loads from a same-origin path or an https URL on ${hosts}, not ${path}`)
-    return
-  }
-
-  // vaultUrl percent-encodes every path segment, so no quote in it ends the CSS string.
-  el.style.backgroundImage = `url("${url}")`
-  const isKnownStyle = BACKGROUND_STYLES.includes(node.backgroundStyle)
-  el.dataset.backgroundStyle = isKnownStyle ? node.backgroundStyle : 'cover'
-}
 
 function createNodeElement(node) {
   const el = document.createElement('div')
@@ -870,50 +285,6 @@ function createNodeElement(node) {
   applyNodeSize(el, node)
   fillNodeElement(el, node)
   return el
-}
-
-/**
- * Draws into an element what the board draws in a card: the card's colour, its
- * title, and the box that `fillNodeContent` draws what it holds into.
- */
-function fillNodeElement(el, node) {
-  const color = resolveColor(node.color)
-  if (color) {
-    el.style.setProperty('--node-color', color)
-    el.dataset.colored = 'true'
-  }
-
-  if (node.type === 'group') {
-    if (node.label) el.appendChild(createGroupLabelElement(node))
-    if (node.background) applyGroupBackground(el, node)
-    return
-  }
-
-  if (node.type === 'file' || node.type === 'link') el.appendChild(createTitleElement(node))
-
-  const text = node.type === 'text' ? splitTextNode(node.text) : null
-  if (text !== null && text.header !== null) el.appendChild(createTextHeaderElement(text.header))
-
-  const contentEl = document.createElement('div')
-  contentEl.className = 'canvas-node-content'
-  el.appendChild(contentEl)
-}
-
-/** Draws what a card holds into its box: its text, its file or its web page. A group holds nothing. */
-function fillNodeContent(el, node) {
-  if (node.type === 'group') return
-
-  const contentEl = el.querySelector(':scope > .canvas-node-content')
-  if (node.type === 'text') {
-    const text = splitTextNode(node.text)
-    contentEl.replaceChildren(markdownElement(renderMarkdown(text.body), config.canvasPath))
-  } else if (node.type === 'file') {
-    fillFileNode(contentEl, node)
-  } else if (node.type === 'link') {
-    fillLinkNode(contentEl, node)
-  } else {
-    contentEl.replaceChildren(placeholderElement(`Unsupported node type: ${node.type}`))
-  }
 }
 
 /** The cards on the board that have not drawn what they hold yet. */
@@ -1716,20 +1087,6 @@ function installNodeResize(node, el) {
 }
 
 // ----------------------------------------------------------------- card size
-
-/**
- * A link, and a file the browser can only frame, are drawn in an iframe, which
- * has no height of its own: such a card cannot be sized by its content, and is
- * given the cap as its height instead.
- */
-function holdsEmbed(node) {
-  if (node.type === 'link') return true
-  if (node.type !== 'file') return false
-
-  const extension = fileExtension(node.file)
-  if (extension === 'md') return false
-  return !IMAGE_EXTENSIONS.includes(extension)
-}
 
 /**
  * Sizes one card. `actual` restores the size the file authored; the other modes
@@ -3128,8 +2485,7 @@ function installFileView() {
 async function main(params) {
   installThemeToggles()
   installFileView()
-  // A single newline is a line break, as in Obsidian with "Strict line breaks" off.
-  markdownParser = new marked.Marked({ gfm: true, breaks: true, extensions: MARKDOWN_EXTENSIONS })
+  startMarkdown({ marked, katex, DOMPurify })
 
   for (const mode of ['note', 'raw']) {
     const path = params.get(mode)

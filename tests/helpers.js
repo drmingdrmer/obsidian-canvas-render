@@ -11,10 +11,11 @@ const ORIGIN = 'http://canvas.test/'
 
 // canvas-render.js is an ES module, which declares no globals. The tests read
 // and call these internals of it, so the copy served to them puts them on window.
+// An entry `name: expression` puts there one that a component of the board holds.
 const INTERNALS = [
-  'view', 'layout', 'config', 'CARD_SIZE_STORAGE_KEY', 'renderMarkdown', 'sliceSubpath', 'resolveColor',
-  'linkedCard', 'markdownElement', 'splitTextNode', 'applyView', 'zoomAt', 'applyCardSize', 'preferredCardSize',
-  'drawCanvas', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
+  'view', 'layout', 'config', 'CARD_SIZE_STORAGE_KEY', 'renderMarkdown', 'sliceSubpath: markdown.sliceSubpath',
+  'linkedCard', 'markdownElement', 'splitTextNode: markdown.splitTextNode', 'applyView', 'zoomAt', 'applyCardSize',
+  'preferredCardSize', 'drawCanvas', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
 ]
 const EXPOSE_INTERNALS = `\nObject.assign(window, { ${INTERNALS.join(', ')} })\n`
 

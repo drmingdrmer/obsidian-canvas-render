@@ -131,7 +131,10 @@ test('a card color is a preset number or a hex value', async ({ page }) => {
   expect(colors).toEqual([['#44cf6e', 'true'], ['#123456', 'true'], ['', null]])
 
   for (const color of ['7', 'red', '', undefined]) {
-    const resolved = await page.evaluate(color => resolveColor(color), color)
+    const resolved = await page.evaluate(async color => {
+      const { resolveColor } = await import('/src/cards.js')
+      return resolveColor(color)
+    }, color)
     expect.soft(resolved, String(color)).toBeNull()
   }
 })
