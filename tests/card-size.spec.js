@@ -122,7 +122,7 @@ test('a size change routes each edge once, though both its cards changed size', 
   const routings = await page.locator('.canvas-edge-line').evaluate(line => {
     const observer = new MutationObserver(() => {})
     observer.observe(line, { attributeFilter: ['d'] })
-    applyCardSize('compact')
+    line.getRootNode().querySelector('[data-card-size="compact"]').click()
     const records = observer.takeRecords()
     observer.disconnect()
     return records.length

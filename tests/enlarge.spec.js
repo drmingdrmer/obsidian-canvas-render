@@ -15,7 +15,7 @@ const LONG_LINES = Array.from({ length: 400 }, (_, i) => `line ${i}`).join('\n\n
 // What enlarging a card must leave alone: the node data, and the edge.
 function boardState(page) {
   return page.locator('.canvas-wrapper').evaluate(wrapper => {
-    const nodes = layout.nodes.map(node => [node.id, node.x, node.y, node.width, node.height])
+    const nodes = model.nodes.map(node => [node.id, node.x, node.y, node.width, node.height])
     const line = wrapper.querySelector('.canvas-edge-line').getAttribute('d')
     return { nodes, line }
   })

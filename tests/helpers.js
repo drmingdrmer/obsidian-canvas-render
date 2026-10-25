@@ -14,8 +14,8 @@ const ORIGIN = 'http://canvas.test/'
 // window just before createBoard returns the board. An entry `name: expression`
 // puts there one that a component of the board holds.
 const INTERNALS = [
-  'view', 'layout', 'config', 'CARD_SIZE_STORAGE_KEY', 'renderMarkdown', 'sliceSubpath: markdown.sliceSubpath',
-  'linkedCard', 'markdownElement', 'splitTextNode: markdown.splitTextNode', 'applyView', 'zoomAt', 'applyCardSize',
+  'view', 'model', 'config', 'CARD_SIZE_STORAGE_KEY', 'renderMarkdown', 'sliceSubpath: markdown.sliceSubpath',
+  'linkedCard', 'markdownElement', 'splitTextNode: markdown.splitTextNode', 'applyView', 'zoomAt',
   'preferredCardSize', 'drawCanvas', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
 ]
 const BOARD_RETURN = '\n  return { boardFragment, main, showStatus }\n'
@@ -114,7 +114,7 @@ async function dragBy(page, x, y, dx, dy) {
 // Each node's [x, y, width, height] in canvas units, keyed by node id.
 function boxes(page) {
   return page.evaluate(() => {
-    const entries = layout.nodes.map(node => [node.id, [node.x, node.y, node.width, node.height]])
+    const entries = model.nodes.map(node => [node.id, [node.x, node.y, node.width, node.height]])
     return Object.fromEntries(entries)
   })
 }

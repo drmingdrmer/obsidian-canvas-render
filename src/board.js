@@ -4,41 +4,27 @@
  */
 
 import {
-  SIDE_NORMALS, sideAnchor, inferSide, edgeGeometry, bezierPoint, arrowPoints, contentBounds,
+  SIDE_NORMALS, sideAnchor, inferSide, edgeGeometry, bezierPoint, contentBounds,
   viewSpan, flightPath, easeInOut, meetsRect, sideBeyond, lastExit, freeStretches, nearestFit,
 } from './geometry.js'
 import { encodePath, fetchFile, createResources } from './resources.js'
-import { SVG_NAMESPACE, createElements, createIcon, placeholderElement } from './elements.js'
+import { createElements, createIcon, placeholderElement } from './elements.js'
 import { createMarkdown } from './markdown.js'
 import { resolveColor, nodeTitleText, holdsEmbed, createCardRenderer } from './cards.js'
+import { edgeSides, cardName, createModel } from './model.js'
+import { CARD_SIZE_STORAGE_KEY, CARD_SIZES, createEdgeElements, layoutEdge, createLayout } from './layout.js'
+import { GRID_SIZE, createDragging } from './dragging.js'
 
 // ---------------------------------------------------------------- constants
 
 const DEFAULT_CANVAS_PATH = 'vault/demo.canvas'
 const THEME_STORAGE_KEY = 'canvas-render-theme'
-const CARD_SIZE_STORAGE_KEY = 'canvas-render-card-size'
-const GRID_SNAP_STORAGE_KEY = 'canvas-render-grid-snap'
 const HISTORY_STORAGE_KEY = 'canvas-render-history'
-
-/**
- * What the card-size control offers, one button each. `actual` draws every card
- * at the size its file gives it. The other two ignore that size, fix one width
- * for the whole board and let the content set the height, up to a cap that
- * keeps a long note from towering over the rest.
- */
-const CARD_SIZES = {
-  actual: { width: null, maxHeight: null },
-  wide: { width: 520, maxHeight: 480 },
-  compact: { width: 320, maxHeight: 240 },
-}
 
 const CARD_SIZE_NAMES = Object.keys(CARD_SIZES)
 
-const GRID_SIZE = 20
 /** The closest two background dots are drawn, in screen pixels; each dot is 2 px across. */
 const MIN_DOT_SPACING = 8
-const MIN_CARD_WIDTH = 120
-const MIN_CARD_HEIGHT = 60
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 3
 const ZOOM_STEP = 1.15
@@ -54,14 +40,6 @@ const FIT_MAX_ZOOM = 1
 const MIN_TEXT_SCALE = 0.25
 const MAX_TEXT_SCALE = 4
 const TEXT_SCALE_STEP = 2 ** (1 / 7)
-
-/**
- * A card draws what it holds once it is in view on a board drawn at
- * CONTENT_MIN_ZOOM or more. Below that its text is too small to read, so a
- * board zoomed out to fit shows each card's title alone, and loads no note.
- * Text drawn larger than its own size makes up for a smaller zoom.
- */
-const CONTENT_MIN_ZOOM = 0.5
 
 /**
  * An enlarged card is at least as large as the same card in Wide: when the
@@ -126,9 +104,6 @@ const ZOOM_WHEEL_SENSITIVITY = 400
  */
 const VIEW_URL_DELAY = 300
 
-/** Extra room around the node bounding box so bowed edges are not clipped. */
-const EDGE_LAYER_MARGIN = 400
-
 const OPPOSITE_SIDES = { top: 'bottom', right: 'left', bottom: 'top', left: 'right' }
 
 /**
@@ -181,12 +156,8 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
     ownsPage: ownsPage,
   }
 
-  /**
-   * The drawn canvas: node data, the element each node was drawn as, the edges on
-   * it, and the sizes the file authored — which the node data no longer holds
-   * once a card is drawn at a size of its own.
-   */
-  const layout = { nodes: [], elements: new Map(), edgesByNode: new Map(), authoredSizes: new Map() }
+  /** The canvas the board draws: its nodes, and the edges between two of them. */
+  const { model, loadCanvas, linkedCard, findNeighbours } = createModel()
 
   /** The paths and links of the board's files, as `main` sets `config` up for them. */
   const resources = createResources(config, appUrl, remoteHosts)
@@ -199,8 +170,23 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
   const { startMarkdown, renderMarkdown, markdownElement } = markdown
 
   /** What the board draws in a card, and in the card preview. */
-  const { fillFileNode, fillNodeElement, fillNodeContent } =
-    createCardRenderer(config, remoteHosts, resources, markdown, { showOnPlainClick, openFile })
+  const cards = createCardRenderer(config, remoteHosts, resources, markdown, { showOnPlainClick, openFile })
+  const { fillFileNode, fillNodeElement, fillNodeContent } = cards
+
+  /** Where the board draws its cards and edges, and at what size. */
+  const {
+    layout, observedNodes, unfilledNodes, fillCard, scheduleFillCards, placeNode, sizeNode, installCardSizeControl,
+    resizeEdgeLayer, drawCards, drawEdges,
+  } = createLayout({ wrapperEl, canvasEl, edgesEl, cardSizeEls }, config, view, model, cards, {
+    viewRect, placeNeighbours, scheduleMarginTitles, enlargedCard: () => enlargedCardEl, placeEnlargedCard,
+    restoreEnlargedCard, refitView, fitToContent,
+  })
+
+  /** Moving and resizing cards by hand. */
+  const dragging = createDragging(gridSnapEl, config, view, model, {
+    placeNode, sizeNode, resizeEdgeLayer, releaseAutoFit, isInteractiveTarget,
+  })
+  const { installGridSnapControl, installNodeDrag, installNodeResize } = dragging
 
   // --------------------------------------------------------------------- theme
 
@@ -231,150 +217,6 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
         localStorage.setItem(THEME_STORAGE_KEY, theme)
       })
     }
-  }
-
-  // ------------------------------------------------------------- node contents
-
-  /**
-   * The file card a wikilink names: one whose path ends in the link's path, with
-   * or without `.md`, ignoring case — the way Obsidian finds a note by its name
-   * alone. Null when no card on the board holds it.
-   */
-  function linkedCard(linkPath) {
-    const wantedPaths = [linkPath, `${linkPath}.md`].map(path => `/${path.toLowerCase()}`)
-    const isLinked = node => {
-      if (node.type !== 'file') return false
-      const file = `/${node.file.toLowerCase()}`
-      return wantedPaths.some(wantedPath => file.endsWith(wantedPath))
-    }
-    return layout.nodes.find(isLinked) ?? null
-  }
-
-  // -------------------------------------------------------------- node element
-
-  function createNodeElement(node) {
-    const el = document.createElement('div')
-    el.className = 'canvas-node'
-    el.dataset.type = node.type
-    el.style.left = `${node.x}px`
-    el.style.top = `${node.y}px`
-    applyNodeSize(el, node)
-    fillNodeElement(el, node)
-    return el
-  }
-
-  /** The cards on the board that have not drawn what they hold yet. */
-  const unfilledNodes = new Set()
-
-  /**
-   * Draws what each card in view holds, while the board is drawn large enough to
-   * read it: see CONTENT_MIN_ZOOM. A card keeps what it has drawn.
-   */
-  function fillCardsInView() {
-    if (unfilledNodes.size === 0) return
-    const zoom = view.zoom * Math.max(config.textScale, 1)
-    if (zoom < CONTENT_MIN_ZOOM) return
-
-    const boardRect = wrapperEl.getBoundingClientRect()
-    const rect = viewRect(boardRect.width, boardRect.height)
-    for (const node of unfilledNodes) {
-      if (meetsRect(node, rect)) fillCard(node)
-    }
-  }
-
-  /** The id of the frame that draws the cards in view, or 0 while none is due. */
-  let fillFrame = 0
-
-  /**
-   * Draws the cards in view on the next frame, once however many changes ask for
-   * it. A card drawn inside `cardSizeObserver`'s callback, where a refit moves the
-   * view, would change size there, and the observer reports that as a loop error.
-   */
-  function scheduleFillCards() {
-    if (fillFrame !== 0) return
-    fillFrame = requestAnimationFrame(() => {
-      fillFrame = 0
-      fillCardsInView()
-    })
-  }
-
-  /** Draws what a card on the board holds, unless it has already. */
-  function fillCard(node) {
-    const unfilled = unfilledNodes.delete(node)
-    if (!unfilled) return
-    fillNodeContent(layout.elements.get(node.id), node)
-  }
-
-  // -------------------------------------------------------------- edge element
-
-  function createEdgeArrow() {
-    const arrow = document.createElementNS(SVG_NAMESPACE, 'polygon')
-    arrow.setAttribute('class', 'canvas-edge-arrow')
-    return arrow
-  }
-
-  /**
-   * Builds the group and its children with no coordinates in them, and returns
-   * the record `layoutEdge` writes those into. Holding on to the child elements
-   * is what spares a moved node a DOM query per pointer move.
-   */
-  function createEdgeElements(edge, fromNode, toNode) {
-    const group = document.createElementNS(SVG_NAMESPACE, 'g')
-    const color = resolveColor(edge.color)
-    if (color) group.style.setProperty('--edge-color', color)
-
-    const path = document.createElementNS(SVG_NAMESPACE, 'path')
-    path.setAttribute('class', 'canvas-edge-line')
-    group.appendChild(path)
-
-    // Spec default: no arrow at the source, an arrow at the target.
-    const startArrow = edge.fromEnd === 'arrow' ? createEdgeArrow() : null
-    const endArrow = edge.toEnd === 'none' ? null : createEdgeArrow()
-    if (startArrow) group.appendChild(startArrow)
-    if (endArrow) group.appendChild(endArrow)
-
-    let label = null
-    if (edge.label) {
-      label = document.createElementNS(SVG_NAMESPACE, 'text')
-      label.setAttribute('class', 'canvas-edge-label')
-      label.textContent = edge.label
-      group.appendChild(label)
-    }
-
-    return { group, edge, fromNode, toNode, path, startArrow, endArrow, label }
-  }
-
-  /** The sides an edge leaves and enters its cards by, where the board draws it. */
-  function edgeSides(record) {
-    const { edge, fromNode, toNode } = record
-    const fromSide = edge.fromSide || inferSide(fromNode, toNode)
-    const toSide = edge.toSide || inferSide(toNode, fromNode)
-    return { fromSide, toSide }
-  }
-
-  /** Writes the geometry the endpoints' current positions imply into an existing edge. */
-  function layoutEdge(record) {
-    const { fromNode, toNode } = record
-    const { fromSide, toSide } = edgeSides(record)
-    const geometry = edgeGeometry(fromNode, fromSide, toNode, toSide)
-
-    const { start, startControl, endControl, end } = geometry
-    record.path.setAttribute(
-      'd',
-      `M ${start.x} ${start.y} C ${startControl.x} ${startControl.y}, ${endControl.x} ${endControl.y}, ${end.x} ${end.y}`,
-    )
-
-    if (record.startArrow) {
-      record.startArrow.setAttribute('points', arrowPoints(start, geometry.startNormal))
-    }
-    if (record.endArrow) {
-      record.endArrow.setAttribute('points', arrowPoints(end, geometry.endNormal))
-    }
-
-    if (!record.label) return
-    const midpoint = bezierPoint(geometry, 0.5)
-    record.label.setAttribute('x', midpoint.x)
-    record.label.setAttribute('y', midpoint.y)
   }
 
   // ------------------------------------------------------------------ viewport
@@ -495,7 +337,7 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
     if (!viewIsAsFitted()) return
 
     const node = fittedView.node
-    const nodes = node === null ? layout.nodes : [node]
+    const nodes = node === null ? model.nodes : [node]
     fitToContent(contentBounds(nodes), node)
   }
 
@@ -707,7 +549,7 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
     textSmallerEl.addEventListener('click', () => scaleText(config.textScale / TEXT_SCALE_STEP))
     textResetEl.addEventListener('click', () => scaleText(1))
     // Recomputed at click time: a drag leaves the bounds captured at load stale.
-    zoomFitEl.addEventListener('click', () => fitToContent(contentBounds(layout.nodes)))
+    zoomFitEl.addEventListener('click', () => fitToContent(contentBounds(model.nodes)))
 
     // A resized window refits the view, unless the reader has moved it since the
     // fit; a moved view keeps its corner, so the address bar takes its new centre.
@@ -766,7 +608,7 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
 
   /** Fits the view to the card `focus` names, or says that the board holds no such card. */
   function showRequestedCard(id) {
-    const node = layout.nodes.find(node => node.id === id)
+    const node = model.nodes.find(node => node.id === id)
     if (node === undefined) {
       showStatus(`the focus parameter accepts the id of a card on this board, got ${id}`)
       return
@@ -825,389 +667,12 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
 
   // ------------------------------------------------------------------ dragging
 
-  /**
-   * What a press on this node moves. Obsidian carries a group's contents with the
-   * frame, and the file format records no membership, so a group takes every node
-   * whose box lies inside its own — fixed when the drag starts, so a node the
-   * frame merely passes over is not picked up along the way.
-   */
-  function movedNodes(node) {
-    if (node.type !== 'group') return [node]
-
-    const contained = layout.nodes.filter(other => {
-      if (other === node) return false
-      const insideX = other.x >= node.x && other.x + other.width <= node.x + node.width
-      const insideY = other.y >= node.y && other.y + other.height <= node.y + node.height
-      return insideX && insideY
-    })
-    return [node].concat(contained)
-  }
-
-  /**
-   * Re-routes every edge attached to a node whose box has just changed. The
-   * previews follow too, as the node may be the card they stand around, or a
-   * card one of them shows. So do the titles in the margin.
-   */
-  function relayoutNodeEdges(node) {
-    const attached = layout.edgesByNode.get(node.id)
-    if (!attached) return
-    for (const record of attached) layoutEdge(record)
-    placeNeighbours()
-    scheduleMarginTitles()
-  }
-
-  /** Moves a node in the data and in the DOM, and re-routes the edges attached to it. */
-  function placeNode(node, x, y) {
-    node.x = x
-    node.y = y
-
-    const el = layout.elements.get(node.id)
-    el.style.left = `${x}px`
-    el.style.top = `${y}px`
-
-    relayoutNodeEdges(node)
-  }
-
-  /**
-   * Resizes a node in the data and in the DOM, and re-routes the edges attached
-   * to it. A card whose height was following its content stops following it: the
-   * reader has just said how tall the card is to be. Pressing a card size puts
-   * the whole board back under that size.
-   */
-  function sizeNode(node, width, height) {
-    node.width = width
-    node.height = height
-
-    const el = layout.elements.get(node.id)
-    el.style.width = `${width}px`
-    el.style.height = `${height}px`
-    el.style.maxHeight = `${height}px`
-    delete el.dataset.sized
-
-    relayoutNodeEdges(node)
-  }
-
   /** From here on the reader arranges the board, so nothing re-fits the view for them. */
   function releaseAutoFit() {
     fittedView = null
   }
 
-  /**
-   * Only a title bar moves a card: the rest of it has to stay free for selecting
-   * text, scrolling and following links. A group is all frame and holds no
-   * content of its own, so any point on it drags.
-   */
-  function startsDrag(target, node) {
-    if (!(target instanceof Element)) return false
-    if (node.type === 'group') return true
-    if (isInteractiveTarget(target)) return false
-    return target.closest('.canvas-node-title, .canvas-node-header') !== null
-  }
-
-  /**
-   * How far the cards under a drag actually move. With the grid off, that is the
-   * pointer's own travel. With it on, the pressed card's top-left corner goes to
-   * the nearest grid intersection, and every card carried along with it keeps its
-   * offset from that corner — a group lands on the grid without being rearranged
-   * inside.
-   */
-  function dragOffset(lead, dx, dy) {
-    if (!config.snapToGrid) return { dx: dx, dy: dy }
-
-    const snappedX = nearestGridLine(lead.startX + dx)
-    const snappedY = nearestGridLine(lead.startY + dy)
-    return { dx: snappedX - lead.startX, dy: snappedY - lead.startY }
-  }
-
-  /** The grid line nearest a canvas coordinate. */
-  function nearestGridLine(value) {
-    return Math.round(value / GRID_SIZE) * GRID_SIZE
-  }
-
-  /** Turns the grid on or off for later drags, and remembers the choice. */
-  function applyGridSnap(enabled) {
-    config.snapToGrid = enabled
-    localStorage.setItem(GRID_SNAP_STORAGE_KEY, String(enabled))
-    gridSnapEl.setAttribute('aria-pressed', String(enabled))
-  }
-
-  function installGridSnapControl() {
-    applyGridSnap(localStorage.getItem(GRID_SNAP_STORAGE_KEY) === 'true')
-    gridSnapEl.addEventListener('click', () => applyGridSnap(!config.snapToGrid))
-  }
-
-  /**
-   * A press on a card's title bar moves the card. The wrapper never sees that
-   * press, so the background still pans, and everything else on the card is left
-   * to scroll, select and navigate as before.
-   */
-  function installNodeDrag(node, el) {
-    let dragPointerId = null
-    let originX = 0
-    let originY = 0
-    let dragged = []
-
-    el.addEventListener('pointerdown', event => {
-      if (event.button !== 0) return
-      if (!startsDrag(event.target, node)) return
-
-      dragPointerId = event.pointerId
-      originX = event.clientX
-      originY = event.clientY
-      dragged = movedNodes(node).map(moved => ({ node: moved, startX: moved.x, startY: moved.y }))
-      releaseAutoFit()
-
-      el.setPointerCapture(dragPointerId)
-      el.classList.add('is-dragging')
-      event.stopPropagation()
-      event.preventDefault()
-    })
-
-    el.addEventListener('pointermove', event => {
-      if (event.pointerId !== dragPointerId) return
-
-      // A screen pixel is one canvas unit divided by the zoom factor.
-      const dx = (event.clientX - originX) / view.zoom
-      const dy = (event.clientY - originY) / view.zoom
-      const offset = dragOffset(dragged[0], dx, dy)
-      for (const item of dragged) placeNode(item.node, item.startX + offset.dx, item.startY + offset.dy)
-
-      // A card dragged past the layer's edge would have its edges clipped.
-      resizeEdgeLayer(contentBounds(layout.nodes))
-    })
-
-    const endDrag = event => {
-      if (event.pointerId !== dragPointerId) return
-      el.releasePointerCapture(dragPointerId)
-      el.classList.remove('is-dragging')
-      dragPointerId = null
-    }
-    el.addEventListener('pointerup', endDrag)
-    el.addEventListener('pointercancel', endDrag)
-  }
-
-  /**
-   * Where a resize drag leaves the card. The corner under the pointer is what the
-   * grid catches, not the width: a card's own origin may sit off the grid, and it
-   * is the edge being moved that has to line up with its neighbours. No card goes
-   * below the minimum, which is a whole number of grid cells either way.
-   */
-  function resizedSize(node, width, height) {
-    let targetWidth = width
-    let targetHeight = height
-
-    if (config.snapToGrid) {
-      targetWidth = nearestGridLine(node.x + width) - node.x
-      targetHeight = nearestGridLine(node.y + height) - node.y
-    }
-
-    return {
-      width: Math.max(targetWidth, MIN_CARD_WIDTH),
-      height: Math.max(targetHeight, MIN_CARD_HEIGHT),
-    }
-  }
-
-  /**
-   * The grip in a card's bottom-right corner resizes it, the way the title row
-   * moves it: the press is kept off the wrapper, so the board neither pans nor
-   * drags the card along with the resize.
-   */
-  function installNodeResize(node, el) {
-    const handleEl = document.createElement('div')
-    handleEl.className = 'canvas-node-resize'
-    el.appendChild(handleEl)
-
-    let resizePointerId = null
-    let originX = 0
-    let originY = 0
-    let startWidth = 0
-    let startHeight = 0
-
-    handleEl.addEventListener('pointerdown', event => {
-      if (event.button !== 0) return
-
-      resizePointerId = event.pointerId
-      originX = event.clientX
-      originY = event.clientY
-      startWidth = node.width
-      startHeight = node.height
-      releaseAutoFit()
-
-      handleEl.setPointerCapture(resizePointerId)
-      el.classList.add('is-resizing')
-      event.stopPropagation()
-      event.preventDefault()
-    })
-
-    handleEl.addEventListener('pointermove', event => {
-      if (event.pointerId !== resizePointerId) return
-
-      // A screen pixel is one canvas unit divided by the zoom factor.
-      const dx = (event.clientX - originX) / view.zoom
-      const dy = (event.clientY - originY) / view.zoom
-      const size = resizedSize(node, startWidth + dx, startHeight + dy)
-      sizeNode(node, size.width, size.height)
-
-      // A card grown past the layer's edge would have its edges clipped.
-      resizeEdgeLayer(contentBounds(layout.nodes))
-    })
-
-    const endResize = event => {
-      if (event.pointerId !== resizePointerId) return
-      handleEl.releasePointerCapture(resizePointerId)
-      el.classList.remove('is-resizing')
-      resizePointerId = null
-    }
-    handleEl.addEventListener('pointerup', endResize)
-    handleEl.addEventListener('pointercancel', endResize)
-  }
-
   // ----------------------------------------------------------------- card size
-
-  /**
-   * Sizes one card. `actual` restores the size the file authored; the other modes
-   * fix the width for the whole board and leave the height to the content, capped.
-   * A group keeps its authored size in every mode: a frame marks out a region of
-   * the board rather than holding content that could size it.
-   *
-   * The node data is rewritten to match, because edge anchors, group membership
-   * and the fit all read a node's box out of it. Nothing is written back to the
-   * file, so a reload restores the authored sizes.
-   */
-  function applyNodeSize(el, node) {
-    const size = CARD_SIZES[config.cardSize]
-    const authored = layout.authoredSizes.get(node.id)
-    const keepsAuthoredSize = size.width === null || node.type === 'group'
-
-    // The cap is written even where nothing is capped, so that it is always a
-    // length: a card whose content overruns the cap takes its height from it, and
-    // `none` is not a value the browser can ease away from.
-    if (keepsAuthoredSize) {
-      node.width = authored.width
-      node.height = authored.height
-      el.style.width = `${authored.width}px`
-      el.style.height = `${authored.height}px`
-      el.style.maxHeight = `${authored.height}px`
-      delete el.dataset.sized
-      return
-    }
-
-    node.width = size.width
-    el.style.width = `${size.width}px`
-    el.style.maxHeight = `${size.maxHeight}px`
-
-    if (holdsEmbed(node)) {
-      node.height = size.maxHeight
-      el.style.height = `${size.maxHeight}px`
-      delete el.dataset.sized
-      return
-    }
-
-    el.style.height = 'auto'
-    el.dataset.sized = 'content'
-  }
-
-  /** Copies the size a card was laid out at into its node data, and tells whether it changed. */
-  function recordCardSize(node) {
-    const el = layout.elements.get(node.id)
-    const width = el.offsetWidth
-    const height = el.offsetHeight
-    const changed = width !== node.width || height !== node.height
-    node.width = width
-    node.height = height
-    return changed
-  }
-
-  /**
-   * One read pass, after every card has been written: the browser lays out once,
-   * and the size each card settled on goes back into the node data, which the
-   * edges, the edge layer and the fit are all computed from.
-   */
-  function readCardSizes() {
-    for (const node of layout.nodes) recordCardSize(node)
-  }
-
-  /**
-   * Re-routes each edge attached to these resized nodes once, after all of them
-   * hold their new box, so an edge between two of them is routed with both. Then
-   * fits the edge layer to the board, and returns the board's bounds for the fit.
-   * The previews of In and Out, and the titles in the margin, are placed again
-   * on the way.
-   */
-  function relayoutAfterResize(nodes) {
-    const records = new Set()
-    for (const node of nodes) {
-      const attached = layout.edgesByNode.get(node.id) ?? []
-      for (const record of attached) records.add(record)
-    }
-    for (const record of records) layoutEdge(record)
-    placeNeighbours()
-    scheduleMarginTitles()
-
-    const bounds = contentBounds(layout.nodes)
-    resizeEdgeLayer(bounds)
-    return bounds
-  }
-
-  /** The node each observed card element draws. */
-  const observedNodes = new WeakMap()
-
-  /**
-   * A content-sized card knows its height only once the browser has laid it out,
-   * again whenever a note, an image or a formula lands, and on every frame of the
-   * transition that eases it into a new size. One observer watches every card, so
-   * the cards resized in one frame are handled together: their node data follows
-   * the elements, and everything computed from the boxes is redone once —
-   * including the fit, for as long as the view is still the one this page fitted.
-   */
-  const cardSizeObserver = new ResizeObserver(entries => {
-    const resized = []
-    for (const entry of entries) {
-      // An enlarged card keeps the box it has on the board, and only its place on screen follows its new size.
-      if (entry.target === enlargedCardEl) {
-        placeEnlargedCard()
-        continue
-      }
-      const node = observedNodes.get(entry.target)
-      const changed = recordCardSize(node)
-      if (changed) resized.push(node)
-    }
-    if (resized.length === 0) return
-
-    relayoutAfterResize(resized)
-    refitView()
-  })
-
-  function observeCardSize(el, node) {
-    observedNodes.set(el, node)
-    cardSizeObserver.observe(el)
-  }
-
-  /** Shows which of the three sizes the board is drawn at. */
-  function markCardSizeControl(sizeName) {
-    for (const el of cardSizeEls) {
-      el.setAttribute('aria-pressed', String(el.dataset.cardSize === sizeName))
-    }
-  }
-
-  /**
-   * Re-draws every card at the named size, then re-routes the edges and refits.
-   * Cards ease into the new size rather than snap to it, so these are the sizes
-   * they are heading for; `observeCardSize` follows the transition frame by frame
-   * and brings the edges, the layer and the fit along with it.
-   */
-  function applyCardSize(sizeName) {
-    // An enlarged card goes back first, so that its box takes the new size.
-    restoreEnlargedCard()
-    config.cardSize = sizeName
-    localStorage.setItem(CARD_SIZE_STORAGE_KEY, sizeName)
-    markCardSizeControl(sizeName)
-
-    for (const node of layout.nodes) applyNodeSize(layout.elements.get(node.id), node)
-    readCardSizes()
-    const bounds = relayoutAfterResize(layout.nodes)
-    fitToContent(bounds)
-  }
 
   /** The `cards` parameter names a size for one page load; the control persists a choice. */
   function preferredCardSize(params) {
@@ -1221,14 +686,6 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
     const stored = localStorage.getItem(CARD_SIZE_STORAGE_KEY)
     if (stored !== null && Object.hasOwn(CARD_SIZES, stored)) return stored
     return 'actual'
-  }
-
-  function installCardSizeControl() {
-    markCardSizeControl(config.cardSize)
-    for (const el of cardSizeEls) {
-      // Pressing the size already in force puts cards resized by hand back under it.
-      el.addEventListener('click', () => applyCardSize(el.dataset.cardSize))
-    }
   }
 
   // ------------------------------------------------------------- enlarged card
@@ -1562,7 +1019,7 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
    */
   function recordFocus(cardEl) {
     if (cardEl !== null) {
-      const node = layout.nodes.find(node => layout.elements.get(node.id) === cardEl)
+      const node = model.nodes.find(node => layout.elements.get(node.id) === cardEl)
       const index = focusHistory.indexOf(node)
       if (index >= 0) focusHistory.splice(index, 1)
       focusHistory.unshift(node)
@@ -1630,41 +1087,6 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
 
   /** The previews on the board, each `{ node, record, direction, el, box, link, side }`. */
   let neighbourPreviews = []
-
-  /**
-   * A dependency edge leaves a card by its right side, and enters by its left
-   * side a card that builds on the first. An edge on the top side of a card
-   * joins a related topic, and one on the bottom side an example.
-   */
-  function isDependency(record) {
-    const { fromSide, toSide } = edgeSides(record)
-    return fromSide === 'right' && toSide === 'left'
-  }
-
-  /**
-   * The cards to preview around a card, in the given directions, each with the
-   * dependency edge that joins it to the card and that edge's direction: `in`
-   * for an edge into the card, from a card to read before it, and `out` for one
-   * out of it, to a card to read after it. A card that several edges join in
-   * one direction is previewed once in that direction, for the first of them.
-   */
-  function findNeighbours(node, directions) {
-    const found = new Map()
-    const attached = layout.edgesByNode.get(node.id) ?? []
-    for (const record of attached) {
-      // An edge from a card to itself leads to no other card.
-      if (record.fromNode === record.toNode) continue
-      if (!isDependency(record)) continue
-
-      const direction = record.toNode === node ? 'in' : 'out'
-      if (!directions.has(direction)) continue
-      const other = direction === 'in' ? record.fromNode : record.toNode
-      const key = `${direction} ${other.id}`
-      if (found.has(key)) continue
-      found.set(key, { node: other, record, direction })
-    }
-    return [...found.values()]
-  }
 
   /** lucide `locate-fixed`: the button finds the card on the board. */
   const LOCATE_ICON =
@@ -1921,11 +1343,11 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
    */
   function findMarginTitles(rect) {
     if (focusedCardEl === null) return []
-    const node = layout.nodes.find(node => layout.elements.get(node.id) === focusedCardEl)
+    const node = model.nodes.find(node => layout.elements.get(node.id) === focusedCardEl)
     if (!meetsRect(node, rect)) return []
 
     const found = new Map()
-    const attached = layout.edgesByNode.get(node.id) ?? []
+    const attached = model.edgesByNode.get(node.id) ?? []
     for (const record of attached) {
       const other = record.fromNode === node ? record.toNode : record.fromNode
       if (found.has(other)) continue
@@ -2103,14 +1525,6 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
 
   // -------------------------------------------------------------------- search
 
-  /** What a search result calls a card: the name or label it shows, or its first line. */
-  function cardName(node) {
-    if (node.type === 'file' || node.type === 'link') return nodeTitleText(node)
-    if (node.type === 'group') return node.label ?? ''
-    if (node.type === 'text') return node.text.trim().split('\n')[0]
-    return ''
-  }
-
   /** The markdown a card shows, as text: a text card's header, and the card's text or note once it has drawn it. */
   function renderedText(node) {
     const previewEls = layout.elements.get(node.id).querySelectorAll('.markdown-preview')
@@ -2126,7 +1540,7 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
     const needle = query.toLowerCase()
     const named = []
     const mentioned = []
-    for (const node of layout.nodes) {
+    for (const node of model.nodes) {
       const name = cardName(node).toLowerCase()
       if (name.includes(needle)) {
         named.push(node)
@@ -2212,148 +1626,18 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
 
   // ------------------------------------------------------------------- drawing
 
-  /** An SVG layer, the board's or the previews', keeps a margin around the nodes so bowed edges are not clipped. */
-  function resizeEdgeLayer(bounds, layerEl = edgesEl) {
-    const layerX = bounds.minX - EDGE_LAYER_MARGIN
-    const layerY = bounds.minY - EDGE_LAYER_MARGIN
-    const layerWidth = bounds.maxX - bounds.minX + EDGE_LAYER_MARGIN * 2
-    const layerHeight = bounds.maxY - bounds.minY + EDGE_LAYER_MARGIN * 2
-
-    layerEl.style.left = `${layerX}px`
-    layerEl.style.top = `${layerY}px`
-    layerEl.setAttribute('width', layerWidth)
-    layerEl.setAttribute('height', layerHeight)
-    layerEl.setAttribute('viewBox', `${layerX} ${layerY} ${layerWidth} ${layerHeight}`)
-  }
-
-  /** Lists the edge under both its endpoints, so a moved node finds what to re-route. */
-  function indexEdge(record) {
-    for (const node of [record.fromNode, record.toNode]) {
-      const attached = layout.edgesByNode.get(node.id)
-      if (attached) attached.push(record)
-      else layout.edgesByNode.set(node.id, [record])
-    }
-  }
-
-  function isJsonObject(value) {
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-  }
-
-  /**
-   * Throws when an optional field holds anything but a string, naming its owner
-   * and the field. A field set to null is drawn as one left out.
-   */
-  function validateOptionalString(name, record, field) {
-    const value = record[field]
-    if (value === undefined || value === null) return
-    if (typeof value !== 'string') throw new TypeError(`${name} needs a string in "${field}"`)
-  }
-
-  /** The string field each node type draws from, as JSON Canvas names it. */
-  const CONTENT_FIELDS = new Map([['text', 'text'], ['file', 'file'], ['link', 'url']])
-
-  /**
-   * Throws when a node lacks a field that drawing reads, or holds one of the
-   * wrong type, naming the node and the field.
-   */
-  function validateNode(node, index) {
-    if (!isJsonObject(node)) throw new TypeError(`node ${index} is not a JSON object`)
-    if (typeof node.id !== 'string') throw new TypeError(`node ${index} needs a string in "id"`)
-
-    const name = `node "${node.id}"`
-    if (typeof node.type !== 'string') throw new TypeError(`${name} needs a string in "type"`)
-    for (const field of ['x', 'y', 'width', 'height']) {
-      if (!Number.isFinite(node[field])) throw new TypeError(`${name} needs a number in "${field}"`)
-    }
-    validateOptionalString(name, node, 'color')
-    if (node.type === 'file') validateOptionalString(name, node, 'subpath')
-    if (node.type === 'group') {
-      validateOptionalString(name, node, 'label')
-      validateOptionalString(name, node, 'background')
-    }
-
-    const contentField = CONTENT_FIELDS.get(node.type)
-    if (contentField === undefined) return
-    if (typeof node[contentField] !== 'string') throw new TypeError(`${name} needs a string in "${contentField}"`)
-  }
-
-  /**
-   * Throws when an edge holds a field that drawing cannot read, naming the edge
-   * and the field. An edge to a card the board lacks is no error: drawCanvas
-   * leaves it out.
-   */
-  function validateEdge(edge, index) {
-    if (!isJsonObject(edge)) throw new TypeError(`edge ${index} is not a JSON object`)
-
-    const name = typeof edge.id === 'string' ? `edge "${edge.id}"` : `edge ${index}`
-    for (const field of ['fromSide', 'toSide']) {
-      const side = edge[field]
-      if (side === undefined || side === null) continue
-      const isSide = Object.keys(SIDE_NORMALS).includes(side)
-      if (!isSide) throw new TypeError(`${name} needs top, right, bottom or left in "${field}"`)
-    }
-    validateOptionalString(name, edge, 'color')
-    validateOptionalString(name, edge, 'label')
-  }
-
+  /** Draws a canvas file on the board, and gives each card its controls once the edges are drawn. */
   function drawCanvas(data) {
-    if (!isJsonObject(data)) throw new TypeError('canvas file is not a JSON object')
-
-    // JSON Canvas makes both arrays optional, so `{}` is an empty board.
-    const nodes = data.nodes ?? []
-    if (!Array.isArray(nodes)) throw new TypeError('canvas file has a "nodes" field that is not an array')
-    const edges = data.edges ?? []
-    if (!Array.isArray(edges)) throw new TypeError('canvas file has an "edges" field that is not an array')
-
-    // Every check runs before anything is drawn, so a broken file draws nothing.
-    const nodesById = new Map()
-    for (const [index, node] of nodes.entries()) {
-      validateNode(node, index)
-      if (nodesById.has(node.id)) throw new TypeError(`two nodes have the id "${node.id}"`)
-      nodesById.set(node.id, node)
-    }
-    for (const [index, edge] of edges.entries()) {
-      validateEdge(edge, index)
-    }
-
-    layout.nodes = nodes
-    for (const node of nodes) {
-      layout.authoredSizes.set(node.id, { width: node.width, height: node.height })
-    }
-
-    // Groups first so they sit behind; within each class the file order is the z-order.
-    const groups = nodes.filter(node => node.type === 'group')
-    const others = nodes.filter(node => node.type !== 'group')
-    for (const node of groups.concat(others)) {
-      const el = createNodeElement(node)
-      layout.elements.set(node.id, el)
+    const records = loadCanvas(data)
+    drawCards()
+    drawEdges(records)
+    for (const node of model.nodes) {
+      const el = layout.elements.get(node.id)
       installNodeDrag(node, el)
       installNodeResize(node, el)
-      observeCardSize(el, node)
-      canvasEl.appendChild(el)
+      // In and Out tell from the edges whether the card has a neighbour to show.
+      installNodeButtons(node)
     }
-    // A card draws what it holds once it comes into view: see fillCardsInView.
-    for (const node of others) unfilledNodes.add(node)
-
-    readCardSizes()
-    resizeEdgeLayer(contentBounds(nodes))
-
-    for (const edge of edges) {
-      const fromNode = nodesById.get(edge.fromNode)
-      const toNode = nodesById.get(edge.toNode)
-      if (!fromNode || !toNode) {
-        console.warn(`edge ${edge.id} references a missing node`, edge)
-        continue
-      }
-
-      const record = createEdgeElements(edge, fromNode, toNode)
-      layoutEdge(record)
-      edgesEl.appendChild(record.group)
-      indexEdge(record)
-    }
-
-    // In and Out tell from the edges whether the card has a neighbour to show.
-    for (const node of nodes) installNodeButtons(node)
   }
 
   // ----------------------------------------------------------------- bootstrap
@@ -2493,7 +1777,7 @@ export function createBoard(hostEl, ownsPage, appUrl, remoteHosts) {
     statusEl.hidden = true
 
     drawCanvas(data)
-    fitToContent(contentBounds(layout.nodes))
+    fitToContent(contentBounds(model.nodes))
     // A link that names a view opens on it in place of the fit, `focus` over `at`.
     if (centre !== null) centreView(centre)
     const focusId = params.get('focus')

@@ -15,7 +15,7 @@ test('with Grid on, a dragged card lands on the 20 px grid', async ({ page }) =>
   await page.mouse.up()
 
   const position = await page.evaluate(() => {
-    const node = layout.nodes[0]
+    const node = model.nodes[0]
     return { x: node.x, y: node.y }
   })
   expect(position).toEqual({ x: 40, y: 40 })
