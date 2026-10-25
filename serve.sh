@@ -29,7 +29,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-store')
         super().end_headers()
 
+class Server(http.server.ThreadingHTTPServer):
+    # The page requests its modules in src/ all at once. Python's default queue
+    # of 5 waiting connections loses some of them; Firefox then fails the module
+    # with NS_ERROR_CORRUPTED_CONTENT, and the board is never drawn.
+    request_queue_size = 64
+
 port = int(sys.argv[1])
 print(f'http://localhost:{port}/')
-http.server.test(HandlerClass=Handler, port=port, bind='127.0.0.1')
+http.server.test(HandlerClass=Handler, ServerClass=Server, port=port, bind='127.0.0.1')
 PYTHON
