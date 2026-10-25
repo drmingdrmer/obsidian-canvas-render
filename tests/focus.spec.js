@@ -44,6 +44,18 @@ test('a click on a control keeps the focus, and a click on the background clears
   await expect(cardA).not.toHaveAttribute('data-focused')
 })
 
+test('Escape takes the focus off the focused card, and puts an enlarged card back', async ({ page }) => {
+  await openBoard(page, BOARD)
+  const cardA = page.locator('.canvas-node').nth(0)
+  await cardA.locator('.canvas-node-content').click()
+  await page.keyboard.press('Space')
+  await expect(cardA).toHaveAttribute('data-enlarged', 'true')
+
+  await page.keyboard.press('Escape')
+  await expect(cardA).not.toHaveAttribute('data-focused')
+  await expect(cardA).not.toHaveAttribute('data-enlarged')
+})
+
 test('a press on a card header or grip moves the focus to that card', async ({ page }) => {
   await openBoard(page, BOARD)
   const cards = page.locator('.canvas-node')

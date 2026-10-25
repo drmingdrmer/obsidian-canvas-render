@@ -58,7 +58,7 @@ test('picking a result fits the view to that card and focuses it, and the zoom s
   expect(lowest).toBe(boardZoom)
 })
 
-test('Enter picks the first result, and Escape clears the box', async ({ page }) => {
+test('Enter picks the first result, and Escape clears the box and leaves the focus on the card', async ({ page }) => {
   await openBoard(page, BOARD, { 'pages/def-Round.md': NOTE })
   const search = page.locator('#search')
   await search.fill('round')
@@ -68,6 +68,7 @@ test('Enter picks the first result, and Escape clears the box', async ({ page })
   await search.press('Escape')
   await expect(search).toHaveValue('')
   await expect(page.locator('#search-results')).toBeHidden()
+  await expect(page.locator('.canvas-node[data-type="group"]')).toHaveAttribute('data-focused', 'true')
 })
 
 test('the view stays on a found card when the window resizes', async ({ page }) => {

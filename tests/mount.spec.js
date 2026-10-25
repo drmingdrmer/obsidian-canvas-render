@@ -191,6 +191,18 @@ test('a note link on a mounted board shows the note inside the board, until ← 
   await expect(page.locator('.canvas-node')).toHaveCount(2)
 })
 
+test('Escape leaves the focus on a card while a note covers the board', async ({ page }) => {
+  await openPost(page)
+  const card = page.locator('.canvas-node[data-type="file"]')
+  await card.locator('.canvas-node-title-link').first().click()
+  await expect(page.locator('#wrapper')).toHaveAttribute('inert', '')
+  await expect(card).toHaveAttribute('data-focused', 'true')
+
+  await page.keyboard.press('Escape')
+  await page.locator('#file-view-back').click()
+  await expect(card).toHaveAttribute('data-focused', 'true')
+})
+
 test('the source icon and the toggle of a mounted board switch the note in place', async ({ page }) => {
   await openPost(page)
   await page.locator('.canvas-node-source-link').click()

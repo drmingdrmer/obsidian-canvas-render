@@ -70,6 +70,22 @@ test('Escape, the × button and a press outside the preview close it, and a pres
   await expect(preview).toBeHidden()
 })
 
+test('Escape closes the preview alone, and a second Escape takes the focus off the card', async ({ page }) => {
+  await openBoard(page, BOARD, NOTES)
+  const cardA = page.locator('.canvas-node').first()
+  const preview = page.locator('#card-preview')
+  await cardA.locator('.internal-link').click()
+  await expect(preview).toBeVisible()
+  await expect(cardA).toHaveAttribute('data-focused', 'true')
+
+  await page.keyboard.press('Escape')
+  await expect(preview).toBeHidden()
+  await expect(cardA).toHaveAttribute('data-focused', 'true')
+
+  await page.keyboard.press('Escape')
+  await expect(cardA).not.toHaveAttribute('data-focused')
+})
+
 test('a wikilink in the preview shows its own card in the same place', async ({ page }) => {
   await openBoard(page, BOARD, NOTES)
   await page.locator('.canvas-node').first().locator('.internal-link').click()

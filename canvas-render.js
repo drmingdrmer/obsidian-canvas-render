@@ -2377,6 +2377,28 @@ function installEnlargeKey() {
   })
 }
 
+/**
+ * Escape takes the focus off the focused card, as a press on the board does.
+ * The card preview lies over the board, so Escape closes an open preview first,
+ * and the next press takes the focus. A form field keeps its Escape. While a
+ * file covers the board, the board is out of reach and keeps its focus.
+ */
+function installEscapeKey() {
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return
+    if (previewedNode !== null) {
+      closeCardPreview()
+      return
+    }
+    if (wrapperEl.inert) return
+    // A key pressed inside the board names the board's host as its target.
+    const target = event.composedPath()[0]
+    if (isField(target)) return
+
+    focusCard(null)
+  })
+}
+
 // -------------------------------------------------------------- card preview
 
 /** The card the preview shows, or null while the preview is closed. */
@@ -2457,9 +2479,6 @@ function installCardPreview() {
     flyToCard(node)
   })
   cardPreviewCloseEl.addEventListener('click', closeCardPreview)
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') closeCardPreview()
-  })
   // In the capture phase, as a press on a card's title row goes no further.
   document.addEventListener(
     'pointerdown',
@@ -3547,6 +3566,7 @@ async function main(params) {
   installSearch()
   installGridSnapControl()
   installEnlargeKey()
+  installEscapeKey()
   installCardPreview()
   installFocusHistory()
   installMarginTitles()
