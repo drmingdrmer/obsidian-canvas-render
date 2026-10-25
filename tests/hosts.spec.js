@@ -183,8 +183,9 @@ test('a file card refuses a file on another host and requests nothing from it', 
   await openBoard(page, { nodes }, {}, '&vault=')
 
   await expect(page.locator('.canvas-node-title-link')).toHaveCount(0)
-  const placeholders = await page.locator('.canvas-node-placeholder').allTextContents()
-  expect(placeholders).toEqual(files.map(file => `A file card loads a same-origin path or an https URL on raw.githubusercontent.com, not ${file}`))
+  // A card draws what it holds on a frame after the board opens.
+  const placeholders = () => page.locator('.canvas-node-placeholder').allTextContents()
+  await expect.poll(placeholders).toEqual(files.map(file => `A file card loads a same-origin path or an https URL on raw.githubusercontent.com, not ${file}`))
   expect(requested).toEqual([])
 })
 
