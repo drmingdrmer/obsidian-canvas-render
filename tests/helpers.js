@@ -25,8 +25,9 @@ function matchesError(expected, error) {
 }
 
 // A test fails on an error it does not expect: an uncaught exception or
-// rejection on the page, read as its message, or a response with an HTTP error
-// status, read as `HTTP <status> <url>`. A test that provokes one pushes a
+// rejection on the page, or an error event on the window that carries no
+// exception, read as its message, or a response with an HTTP error status,
+// read as `HTTP <status> <url>`. A test that provokes one pushes a
 // string equal to it, or a RegExp matching it, into expectedErrors, and then
 // fails if it never happens.
 const test = base.extend({
@@ -36,6 +37,16 @@ const test = base.extend({
   page: async ({ page, expectedErrors }, use) => {
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
+    // Chromium and Firefox raise a ResizeObserver loop error only as such an
+    // event, and no pageerror reports it.
+    await page.exposeFunction('reportWindowError', message => errors.push(message))
+    await page.addInitScript(() => {
+      window.addEventListener('error', event => {
+        // Such an event's error is null in Chromium, and undefined in Firefox.
+        const carriesException = event.error !== null && event.error !== undefined
+        if (!carriesException) window.reportWindowError(event.message)
+      })
+    })
     page.on('response', response => {
       if (response.status() < 400) return
       errors.push(`HTTP ${response.status()} ${response.url()}`)
