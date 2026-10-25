@@ -14,9 +14,9 @@ const ORIGIN = 'http://canvas.test/'
 // window just before createBoard returns the board. An entry `name: expression`
 // puts there one that a component of the board holds.
 const INTERNALS = [
-  'view', 'model', 'config', 'CARD_SIZE_STORAGE_KEY', 'renderMarkdown', 'sliceSubpath: markdown.sliceSubpath',
-  'linkedCard', 'markdownElement', 'splitTextNode: markdown.splitTextNode', 'applyView', 'zoomAt',
-  'preferredCardSize', 'drawCanvas', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
+  'view', 'model', 'config', 'renderMarkdown', 'sliceSubpath: markdown.sliceSubpath',
+  'linkedCard', 'markdownElement', 'splitTextNode: markdown.splitTextNode', 'applyView: viewport.applyView',
+  'zoomAt: viewport.zoomAt', 'drawCanvas', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
 ]
 const BOARD_RETURN = '\n  return { boardFragment, main, showStatus }\n'
 const EXPOSE_INTERNALS = `\n  Object.assign(window, { ${INTERNALS.join(', ')} })${BOARD_RETURN}`

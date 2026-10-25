@@ -142,7 +142,9 @@ test('resolveVaultRoot refuses a vault on another host', async ({ page }) => {
 
 test('preferredCardSize takes the cards parameter over the stored size', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
-  const sizes = await page.evaluate(() => {
+  const sizes = await page.evaluate(async () => {
+    const { preferredCardSize } = await import('/src/page.js')
+    const { CARD_SIZE_STORAGE_KEY } = await import('/src/layout.js')
     const fromParameter = preferredCardSize(new URLSearchParams('cards=wide'))
     localStorage.setItem(CARD_SIZE_STORAGE_KEY, 'compact')
     const parameterOverStored = preferredCardSize(new URLSearchParams('cards=actual'))
@@ -155,7 +157,8 @@ test('preferredCardSize takes the cards parameter over the stored size', async (
   })
   expect(sizes).toEqual({ fromParameter: 'wide', parameterOverStored: 'actual', stored: 'compact', storedUnknown: 'actual', storedInherited: 'actual' })
 
-  const message = await page.evaluate(() => {
+  const message = await page.evaluate(async () => {
+    const { preferredCardSize } = await import('/src/page.js')
     try {
       return preferredCardSize(new URLSearchParams('cards=huge'))
     } catch (error) {
