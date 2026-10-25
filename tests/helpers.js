@@ -9,15 +9,17 @@ const { test: base, expect } = require('@playwright/test')
 const APP_ROOT = path.join(__dirname, '..')
 const ORIGIN = 'http://canvas.test/'
 
-// canvas-render.js is an ES module, which declares no globals. The tests read
-// and call these internals of it, so the copy served to them puts them on window.
-// An entry `name: expression` puts there one that a component of the board holds.
+// The board is an ES module, which declares no globals. The tests read and call
+// these internals of it, so the copy of src/board.js served to them puts them on
+// window just before createBoard returns the board. An entry `name: expression`
+// puts there one that a component of the board holds.
 const INTERNALS = [
   'view', 'layout', 'config', 'CARD_SIZE_STORAGE_KEY', 'renderMarkdown', 'sliceSubpath: markdown.sliceSubpath',
   'linkedCard', 'markdownElement', 'splitTextNode: markdown.splitTextNode', 'applyView', 'zoomAt', 'applyCardSize',
   'preferredCardSize', 'drawCanvas', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
 ]
-const EXPOSE_INTERNALS = `\nObject.assign(window, { ${INTERNALS.join(', ')} })\n`
+const BOARD_RETURN = '\n  return { boardFragment, main, showStatus }\n'
+const EXPOSE_INTERNALS = `\n  Object.assign(window, { ${INTERNALS.join(', ')} })${BOARD_RETURN}`
 
 // Whether an expected error, a string or a RegExp, matches an error message.
 function matchesError(expected, error) {
@@ -71,9 +73,10 @@ async function serveApp(page) {
     const relative = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname)
     const file = path.join(APP_ROOT, relative)
     if (!fs.existsSync(file)) return route.fulfill({ status: 404 })
-    if (relative === '/canvas-render.js') {
-      const source = fs.readFileSync(file, 'utf8')
-      return route.fulfill({ body: source + EXPOSE_INTERNALS, contentType: 'text/javascript' })
+    if (relative === '/src/board.js') {
+      const parts = fs.readFileSync(file, 'utf8').split(BOARD_RETURN)
+      if (parts.length !== 2) throw new Error(`createBoard in src/board.js must end with${BOARD_RETURN}`)
+      return route.fulfill({ body: parts.join(EXPOSE_INTERNALS), contentType: 'text/javascript' })
     }
     return route.fulfill({ path: file })
   })
