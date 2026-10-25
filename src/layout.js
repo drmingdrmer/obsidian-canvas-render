@@ -171,6 +171,11 @@ export function createLayout(els, config, view, model, cards, actions) {
     fillNodeContent(layout.elements.get(node.id), node)
   }
 
+  /** Draws what every card on the board holds, in view or not. */
+  function fillAllCards() {
+    for (const node of unfilledNodes) fillCard(node)
+  }
+
   /**
    * Re-routes every edge attached to a node whose box has just changed. The
    * previews follow too, as the node may be the card they stand around, or a
@@ -416,7 +421,7 @@ export function createLayout(els, config, view, model, cards, actions) {
   }
 
   return {
-    layout, observedNodes, unfilledNodes, fillCard, scheduleFillCards, placeNode, sizeNode, installCardSizeControl,
+    layout, observedNodes, fillAllCards, fillCard, scheduleFillCards, placeNode, sizeNode, installCardSizeControl,
     resizeEdgeLayer, drawCards, drawEdges,
   }
 }
