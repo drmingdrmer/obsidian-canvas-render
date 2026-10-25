@@ -120,6 +120,23 @@ const NEIGHBOUR_DISTANCE = 80
 const NEIGHBOUR_GAP = 20
 
 /**
+ * A card out of view that an edge joins to the focused card shows its title in
+ * the margin, a band MARGIN_TITLE_BAND wide along each side of the viewport.
+ * A title is MARGIN_TITLE_HEIGHT tall and at most MARGIN_TITLE_MAX_WIDTH wide.
+ * It stands MARGIN_TITLE_INSET clear of the viewport's edge, and
+ * MARGIN_TITLE_GAP clear of the other titles and of the controls. The place
+ * where an edge leaves the view is found among EDGE_EXIT_SAMPLES points along
+ * the edge, then narrowed down by EDGE_EXIT_HALVINGS halvings.
+ */
+const MARGIN_TITLE_HEIGHT = 24
+const MARGIN_TITLE_MAX_WIDTH = 200
+const MARGIN_TITLE_INSET = 4
+const MARGIN_TITLE_GAP = 4
+const MARGIN_TITLE_BAND = MARGIN_TITLE_HEIGHT + MARGIN_TITLE_INSET * 2
+const EDGE_EXIT_SAMPLES = 32
+const EDGE_EXIT_HALVINGS = 10
+
+/**
  * A move to another card flies the view there on the path van Wijk and Nuij
  * give in "Smooth and efficient zooming and panning": it zooms out as it pans,
  * and back in as it lands, so that the way between the two cards stays in
@@ -189,6 +206,8 @@ const BOARD_MARKUP = `
       <svg class="canvas-neighbour-links" id="neighbour-links" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
   </div>
+
+  <div class="canvas-margin" id="margin"></div>
 
   <div class="canvas-controls">
     <div class="canvas-control-group canvas-search">
@@ -264,6 +283,7 @@ const canvasEl = boardFragment.getElementById('canvas')
 const edgesEl = boardFragment.getElementById('edges')
 const neighboursEl = boardFragment.getElementById('neighbours')
 const neighbourLinksEl = boardFragment.getElementById('neighbour-links')
+const marginEl = boardFragment.getElementById('margin')
 const statusEl = boardFragment.getElementById('status')
 const controlsEl = boardFragment.querySelector('.canvas-controls')
 const zoomInEl = boardFragment.getElementById('zoom-in')
@@ -549,12 +569,20 @@ function edgeGeometry(fromNode, fromSide, toNode, toSide) {
   return { start, startControl, endControl, end, startNormal, endNormal }
 }
 
-function bezierMidpoint(geometry) {
-  const x =
-    (geometry.start.x + 3 * geometry.startControl.x + 3 * geometry.endControl.x + geometry.end.x) / 8
-  const y =
-    (geometry.start.y + 3 * geometry.startControl.y + 3 * geometry.endControl.y + geometry.end.y) / 8
-  return { x: x, y: y }
+/** The point of an edge's curve at `t`, which runs from 0 at the curve's start to 1 at its end. */
+function bezierPoint(geometry, t) {
+  const { start, startControl, endControl, end } = geometry
+  const rest = 1 - t
+  // The Bernstein weights of the curve's four points.
+  const weights = [rest * rest * rest, 3 * rest * rest * t, 3 * rest * t * t, t * t * t]
+  const points = [start, startControl, endControl, end]
+  let x = 0
+  let y = 0
+  for (const [index, point] of points.entries()) {
+    x += weights[index] * point.x
+    y += weights[index] * point.y
+  }
+  return { x, y }
 }
 
 /** Triangle with its tip on the node border, pointing inwards. */
@@ -1165,7 +1193,7 @@ function layoutEdge(record) {
   }
 
   if (!record.label) return
-  const midpoint = bezierMidpoint(geometry)
+  const midpoint = bezierPoint(geometry, 0.5)
   record.label.setAttribute('x', midpoint.x)
   record.label.setAttribute('y', midpoint.y)
 }
@@ -1192,6 +1220,7 @@ function applyView() {
 
   scheduleViewUrl()
   placeEnlargedCard()
+  scheduleMarginTitles()
 
   const zoomLabel = `${Math.round(view.zoom * 100)}%`
   if (zoomLabel === shownZoomLabel) return
@@ -1298,12 +1327,12 @@ let focusedCardEl = null
  * take the rest of the gesture over, which is what a reader paging through a
  * board never means.
  *
- * The controls, the history and the previews of In and Out are neither:
- * pressing one leaves the focus where the reader put it.
+ * The controls, the history, the previews of In and Out and the titles in the
+ * margin are neither: pressing one leaves the focus where the reader put it.
  */
 function focusOnPress(target) {
   if (!(target instanceof Element)) return
-  if (target.closest('.canvas-controls, .canvas-history, .canvas-neighbour') !== null) return
+  if (target.closest('.canvas-controls, .canvas-history, .canvas-neighbour, .canvas-margin-title') !== null) return
 
   focusCard(target.closest('.canvas-node'))
 }
@@ -1323,6 +1352,8 @@ function focusCard(cardEl) {
   focusedCardEl = cardEl
   if (cardEl !== null) cardEl.dataset.focused = 'true'
   recordFocus(cardEl)
+  // The titles in the margin name the cards the focused card has edges to.
+  scheduleMarginTitles()
 }
 
 /** Fits the view to one card, and puts the focus on it as a press on it would. */
@@ -1469,7 +1500,7 @@ function wheelScrollsCard(target) {
  */
 function isInteractiveTarget(target) {
   if (!(target instanceof Element)) return false
-  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-bar, .canvas-node[data-enlarged="true"], .canvas-controls, .canvas-history'
+  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-bar, .canvas-node[data-enlarged="true"], .canvas-controls, .canvas-history, .canvas-margin-title'
   return target.closest(interactive) !== null
 }
 
@@ -1689,13 +1720,14 @@ function movedNodes(node) {
 /**
  * Re-routes every edge attached to a node whose box has just changed. The
  * previews follow too, as the node may be the card they stand around, or a
- * card one of them shows.
+ * card one of them shows. So do the titles in the margin.
  */
 function relayoutNodeEdges(node) {
   const attached = layout.edgesByNode.get(node.id)
   if (!attached) return
   for (const record of attached) layoutEdge(record)
   placeNeighbours()
+  scheduleMarginTitles()
 }
 
 /** Moves a node in the data and in the DOM, and re-routes the edges attached to it. */
@@ -1987,7 +2019,8 @@ function readCardSizes() {
  * Re-routes each edge attached to these resized nodes once, after all of them
  * hold their new box, so an edge between two of them is routed with both. Then
  * fits the edge layer to the board, and returns the board's bounds for the fit.
- * The previews of In and Out are placed again on the way.
+ * The previews of In and Out, and the titles in the margin, are placed again
+ * on the way.
  */
 function relayoutAfterResize(nodes) {
   const records = new Set()
@@ -1997,6 +2030,7 @@ function relayoutAfterResize(nodes) {
   }
   for (const record of records) layoutEdge(record)
   placeNeighbours()
+  scheduleMarginTitles()
 
   const bounds = contentBounds(layout.nodes)
   resizeEdgeLayer(bounds)
@@ -2691,6 +2725,337 @@ function placeNeighbours() {
   resizeEdgeLayer(contentBounds([card, ...boxes]), neighbourLinksEl)
 }
 
+// ------------------------------------------------------------- margin titles
+
+/** The element of each title in the margin, keyed by the node it names. */
+const marginTitleEls = new Map()
+
+/** The id of the frame that draws the titles in the margin, or 0 while none is due. */
+let marginFrame = 0
+
+/** Draws the titles in the margin on the next frame, once however many changes ask for it. */
+function scheduleMarginTitles() {
+  if (marginFrame !== 0) return
+  marginFrame = requestAnimationFrame(() => {
+    marginFrame = 0
+    drawMarginTitles()
+  })
+}
+
+/** The part of the board in view inside the margin of a viewport this size, in canvas units. */
+function viewRect(width, height) {
+  const minX = (MARGIN_TITLE_BAND - view.x) / view.zoom
+  const minY = (MARGIN_TITLE_BAND - view.y) / view.zoom
+  const maxX = (width - MARGIN_TITLE_BAND - view.x) / view.zoom
+  const maxY = (height - MARGIN_TITLE_BAND - view.y) / view.zoom
+  return { minX, minY, maxX, maxY }
+}
+
+/** True when some of the node's box lies inside the rect, not only on its border. */
+function meetsRect(node, rect) {
+  const meetsX = node.x < rect.maxX && node.x + node.width > rect.minX
+  const meetsY = node.y < rect.maxY && node.y + node.height > rect.minY
+  return meetsX && meetsY
+}
+
+/** True when the point lies inside the rect, not on its border. */
+function holdsPoint(rect, point) {
+  const holdsX = point.x > rect.minX && point.x < rect.maxX
+  const holdsY = point.y > rect.minY && point.y < rect.maxY
+  return holdsX && holdsY
+}
+
+/** The side of the rect that a point outside it lies farthest beyond. */
+function sideBeyond(rect, point) {
+  const distances = {
+    top: rect.minY - point.y,
+    right: point.x - rect.maxX,
+    bottom: point.y - rect.maxY,
+    left: rect.minX - point.x,
+  }
+  let side = 'top'
+  for (const [name, distance] of Object.entries(distances)) {
+    if (distance > distances[side]) side = name
+  }
+  return side
+}
+
+/**
+ * The `t` at which a path leaves the rect for the last time, or null for a
+ * path that never runs inside the rect. `pointAt` gives the path's point at
+ * each `t`, from 0 at its start to 1 at its end.
+ */
+function lastExit(pointAt, rect) {
+  let lastInside = -1
+  for (let step = 0; step <= EDGE_EXIT_SAMPLES; step++) {
+    const point = pointAt(step / EDGE_EXIT_SAMPLES)
+    if (holdsPoint(rect, point)) lastInside = step
+  }
+  if (lastInside === -1) return null
+
+  // The path crosses the border between the last point inside and the next one.
+  let inside = lastInside / EDGE_EXIT_SAMPLES
+  let outside = (lastInside + 1) / EDGE_EXIT_SAMPLES
+  for (let halving = 0; halving < EDGE_EXIT_HALVINGS; halving++) {
+    const middle = (inside + outside) / 2
+    const point = pointAt(middle)
+    if (holdsPoint(rect, point)) inside = middle
+    else outside = middle
+  }
+  return outside
+}
+
+/**
+ * Where an edge leaves the rect for the last time, on its way from the card
+ * `node` in view to the card out of view at its other end: the point just past
+ * the border, and the side of the rect that point lies beyond. An edge that
+ * runs outside the rect all the way leaves it where it starts.
+ */
+function edgeExit(record, node, rect) {
+  const { fromSide, toSide } = edgeSides(record)
+  const geometry = edgeGeometry(record.fromNode, fromSide, record.toNode, toSide)
+  const startsAtNode = record.fromNode === node
+  const pointAt = t => {
+    const curveT = startsAtNode ? t : 1 - t
+    return bezierPoint(geometry, curveT)
+  }
+
+  const exit = lastExit(pointAt, rect) ?? 0
+  const point = pointAt(exit)
+  const side = sideBeyond(rect, point)
+  return { point, side }
+}
+
+/** How far along its side of the viewport, in pixels, a point beyond that side of the rect stands. */
+function screenAlong(point, side, rect) {
+  const isRow = side === 'top' || side === 'bottom'
+  if (isRow) {
+    const x = Math.min(Math.max(point.x, rect.minX), rect.maxX)
+    return view.x + x * view.zoom
+  }
+  const y = Math.min(Math.max(point.y, rect.minY), rect.maxY)
+  return view.y + y * view.zoom
+}
+
+/**
+ * The cards out of view that an edge joins to the focused card, while that
+ * card is in view, each as `{ node, record, side, along }`. `record` is the
+ * first edge between the two cards. It leaves the view by `side` of the
+ * viewport, `along` pixels along it.
+ */
+function findMarginTitles(rect) {
+  if (focusedCardEl === null) return []
+  const node = layout.nodes.find(node => layout.elements.get(node.id) === focusedCardEl)
+  if (!meetsRect(node, rect)) return []
+
+  const found = new Map()
+  const attached = layout.edgesByNode.get(node.id) ?? []
+  for (const record of attached) {
+    const other = record.fromNode === node ? record.toNode : record.fromNode
+    if (found.has(other)) continue
+    // An edge from the card to itself leads to a card in view.
+    if (meetsRect(other, rect)) continue
+
+    const { point, side } = edgeExit(record, node, rect)
+    const along = screenAlong(point, side, rect)
+    found.set(other, { node: other, record, side, along })
+  }
+  return [...found.values()]
+}
+
+/** A title for the margin. A click on it flies the view to its card, and puts the focus there. */
+function createMarginTitle(node) {
+  const name = cardName(node) || 'Untitled'
+  const nameEl = document.createElement('span')
+  nameEl.className = 'canvas-margin-title-name'
+  nameEl.textContent = name
+
+  const el = document.createElement('button')
+  el.className = 'canvas-margin-title'
+  el.type = 'button'
+  el.title = name
+  el.style.height = `${MARGIN_TITLE_HEIGHT}px`
+  el.style.maxWidth = `${MARGIN_TITLE_MAX_WIDTH}px`
+  el.appendChild(nameEl)
+  el.addEventListener('click', () => flyToCard(node))
+  marginEl.appendChild(el)
+  return el
+}
+
+/** Points a title's arrow out of its side of the viewport, in the colour of the edge it stands for. */
+function markMarginTitle(title) {
+  const { el, record, side } = title
+  el.dataset.side = side
+  const color = resolveColor(record.edge.color)
+  if (color) el.style.setProperty('--edge-color', color)
+  else el.style.removeProperty('--edge-color')
+}
+
+/**
+ * Shows a title in the margin for each card out of view that an edge joins to
+ * the focused card, and removes the titles no card needs any longer. A title
+ * that stays keeps its element, which only moves.
+ */
+function drawMarginTitles() {
+  const boardRect = wrapperEl.getBoundingClientRect()
+  const titles = findMarginTitles(viewRect(boardRect.width, boardRect.height))
+  const named = new Set(titles.map(title => title.node))
+  for (const [node, el] of marginTitleEls) {
+    if (named.has(node)) continue
+    el.remove()
+    marginTitleEls.delete(node)
+  }
+
+  for (const title of titles) {
+    let el = marginTitleEls.get(title.node)
+    if (el === undefined) {
+      el = createMarginTitle(title.node)
+      marginTitleEls.set(title.node, el)
+    }
+    // A title that found no room last time shows again, to be measured.
+    el.hidden = false
+    title.el = el
+    markMarginTitle(title)
+  }
+  // The boxes and the widths are all read before any title moves, so that
+  // reading them lays the board out once.
+  const boxes = coveringBoxes(boardRect)
+  for (const title of titles) title.width = title.el.getBoundingClientRect().width
+  placeMarginTitles(titles, boardRect, boxes)
+}
+
+/** The boxes of the controls, and of the history while it shows, in pixels from the board's top-left corner. */
+function coveringBoxes(boardRect) {
+  const els = historyEl.hidden ? [controlsEl] : [controlsEl, historyEl]
+  return els.map(el => {
+    const rect = el.getBoundingClientRect()
+    const left = rect.left - boardRect.left
+    const top = rect.top - boardRect.top
+    return { left, top, right: left + rect.width, bottom: top + rect.height }
+  })
+}
+
+/**
+ * The room the titles on one side of the viewport take: `along` that side, and
+ * `across` it, each as `{ start, end }` in pixels from the board's top-left
+ * corner.
+ */
+function marginLane(side, boardRect) {
+  const isRow = side === 'top' || side === 'bottom'
+  // The titles on the left and the right stop short of the rows at the top and
+  // the bottom, so that no two titles meet in a corner.
+  let along = { start: MARGIN_TITLE_BAND, end: boardRect.height - MARGIN_TITLE_BAND }
+  if (isRow) along = { start: MARGIN_TITLE_INSET, end: boardRect.width - MARGIN_TITLE_INSET }
+
+  const depth = isRow ? MARGIN_TITLE_HEIGHT : MARGIN_TITLE_MAX_WIDTH
+  const breadth = isRow ? boardRect.height : boardRect.width
+  const atStart = side === 'top' || side === 'left'
+  const acrossStart = atStart ? MARGIN_TITLE_INSET : breadth - MARGIN_TITLE_INSET - depth
+  const across = { start: acrossStart, end: acrossStart + depth }
+  return { isRow, along, across }
+}
+
+/**
+ * The stretches along a lane that the boxes cover where they cross it, each
+ * MARGIN_TITLE_GAP longer at both ends.
+ */
+function coveredStretches(lane, boxes) {
+  const stretches = []
+  for (const box of boxes) {
+    const across = lane.isRow ? { start: box.top, end: box.bottom } : { start: box.left, end: box.right }
+    const crosses = across.start < lane.across.end && across.end > lane.across.start
+    if (!crosses) continue
+
+    const along = lane.isRow ? { start: box.left, end: box.right } : { start: box.top, end: box.bottom }
+    stretches.push({ start: along.start - MARGIN_TITLE_GAP, end: along.end + MARGIN_TITLE_GAP })
+  }
+  return stretches
+}
+
+/** The parts of the range, `{ start, end }`, that none of the taken stretches covers, in order. */
+function freeStretches(range, taken) {
+  const sorted = [...taken]
+  sorted.sort((a, b) => a.start - b.start)
+  const free = []
+  let cursor = range.start
+  for (const stretch of sorted) {
+    if (stretch.start >= range.end) break
+    if (stretch.start > cursor) free.push({ start: cursor, end: stretch.start })
+    cursor = Math.max(cursor, stretch.end)
+  }
+  if (cursor < range.end) free.push({ start: cursor, end: range.end })
+  return free
+}
+
+/**
+ * The start nearest to `wanted` at which something `length` long fits into one
+ * of the free stretches, or null when none of them is long enough. Of two
+ * starts as near, the later one wins.
+ */
+function nearestFit(wanted, length, free) {
+  let best = null
+  for (const stretch of free) {
+    if (stretch.end - stretch.start < length) continue
+    const start = Math.min(Math.max(wanted, stretch.start), stretch.end - length)
+    const isNearer = best === null || Math.abs(start - wanted) <= Math.abs(best - wanted)
+    if (isNearer) best = start
+  }
+  return best
+}
+
+/**
+ * Lines the titles up along each side of the viewport, each as near as it fits
+ * to where its edge leaves the view, MARGIN_TITLE_GAP clear of the other
+ * titles, of the controls and of the history. A title with no room left on its
+ * side hides.
+ */
+function placeMarginTitles(titles, boardRect, boxes) {
+  for (const side of Object.keys(SIDE_NORMALS)) {
+    const lane = marginLane(side, boardRect)
+    const taken = coveredStretches(lane, boxes)
+    const onSide = titles.filter(title => title.side === side)
+    onSide.sort((a, b) => a.along - b.along)
+    for (const title of onSide) {
+      const length = lane.isRow ? title.width : MARGIN_TITLE_HEIGHT
+      const free = freeStretches(lane.along, taken)
+      const start = nearestFit(title.along - length / 2, length, free)
+      title.el.hidden = start === null
+      if (start === null) continue
+
+      taken.push({ start: start - MARGIN_TITLE_GAP, end: start + length + MARGIN_TITLE_GAP })
+      placeMarginTitle(title, lane, start)
+    }
+  }
+}
+
+/** Puts a title `start` pixels along its lane, against the viewport's edge. */
+function placeMarginTitle(title, lane, start) {
+  let left = start
+  let top = lane.across.start
+  if (!lane.isRow) {
+    const atRight = title.side === 'right'
+    left = atRight ? lane.across.end - title.width : lane.across.start
+    top = start
+  }
+  title.el.style.left = `${left}px`
+  title.el.style.top = `${top}px`
+}
+
+/**
+ * The titles in the margin follow the viewport's edges, and keep clear of the
+ * controls and the history, as any of them changes size. The controls are
+ * watched for changes to their content rather than to their size: their zoom
+ * label changes inside `cardSizeObserver`'s callback, and a ResizeObserver on
+ * an element above the cards would report that change as a loop error.
+ */
+function installMarginTitles() {
+  const observer = new ResizeObserver(scheduleMarginTitles)
+  observer.observe(wrapperEl)
+  observer.observe(historyEl)
+  const controlsObserver = new MutationObserver(scheduleMarginTitles)
+  controlsObserver.observe(controlsEl, { subtree: true, childList: true, characterData: true, attributes: true })
+}
+
 // -------------------------------------------------------------------- search
 
 /** What a search result calls a card: the name or label it shows, or its first line. */
@@ -3115,6 +3480,7 @@ async function main(params) {
   installEnlargeKey()
   installCardPreview()
   installFocusHistory()
+  installMarginTitles()
 }
 
 /** Appends `el`, a `<link>` or a `<script>`, to `parent`, and resolves once the file at `url` has loaded. */

@@ -830,6 +830,83 @@
   overscroll-behavior: auto;
 }
 
+/* ---------- margin titles ---------- */
+
+/* The titles of the cards out of view that an edge joins to the focused card,
+   in a band along the edges of the board. The band lets every press through
+   to the board, and `placeMarginTitles` puts each title in it. */
+.canvas-margin {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.canvas-margin-title {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* As wide as its title wherever it stands, up to the width `createMarginTitle` sets. */
+  width: max-content;
+  padding: 0 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background: var(--background-primary);
+  box-shadow: var(--canvas-shadow);
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* `display: flex` above would otherwise outrank the browser's own rule for `hidden`. */
+.canvas-margin-title[hidden] {
+  display: none;
+}
+
+.canvas-margin-title:hover,
+.canvas-margin-title:focus-visible {
+  border-color: var(--edge-color, var(--canvas-edge-color));
+  outline: none;
+}
+
+/* A long title ends in an ellipsis, and shows whole in the tooltip. */
+.canvas-margin-title-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The arrow points out of the board, towards the card, in the colour of the
+   edge that joins the card to the view. */
+.canvas-margin-title::before {
+  color: var(--edge-color, var(--canvas-edge-color));
+  font-weight: 600;
+}
+
+.canvas-margin-title[data-side="top"]::before {
+  content: "\2191";
+}
+
+.canvas-margin-title[data-side="right"]::before {
+  content: "\2192";
+}
+
+.canvas-margin-title[data-side="bottom"]::before {
+  content: "\2193";
+}
+
+.canvas-margin-title[data-side="left"]::before {
+  content: "\2190";
+}
+
+/* On the right side, the arrow stands at the end nearest the board's edge. */
+.canvas-margin-title[data-side="right"] {
+  flex-direction: row-reverse;
+}
+
 /* ---------- single-file view: rendered note, or its markdown source ---------- */
 
 :host([data-mode="file"]) .canvas-wrapper {
