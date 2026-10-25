@@ -107,7 +107,7 @@ export function createLayout(els, config, view, model, cards, actions) {
   const { wrapperEl, canvasEl, edgesEl, cardSizeEls } = els
   const { fillNodeElement, fillNodeContent } = cards
   const {
-    viewRect, placeNeighbours, scheduleMarginTitles, enlargedCard, placeEnlargedCard, restoreEnlargedCard,
+    viewRect, layoutChanged, enlargedCard, placeEnlargedCard, restoreEnlargedCard,
     refitView, fitToContent,
   } = actions
 
@@ -185,8 +185,7 @@ export function createLayout(els, config, view, model, cards, actions) {
     const attached = layout.edgesByNode.get(node.id)
     if (!attached) return
     for (const record of attached) layoutEdge(record)
-    placeNeighbours()
-    scheduleMarginTitles()
+    layoutChanged()
   }
 
   /** Moves a node in the data and in the DOM, and re-routes the edges attached to it. */
@@ -297,8 +296,7 @@ export function createLayout(els, config, view, model, cards, actions) {
       for (const record of attached) records.add(record)
     }
     for (const record of records) layoutEdge(record)
-    placeNeighbours()
-    scheduleMarginTitles()
+    layoutChanged()
 
     const bounds = contentBounds(model.nodes)
     resizeEdgeLayer(bounds)
