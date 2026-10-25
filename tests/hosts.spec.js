@@ -103,7 +103,10 @@ test('assertAllowedHost refuses every other host and scheme', async ({ page }) =
 test('encodePath encodes each segment and keeps the scheme and host', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
   for (const [path, encoded] of ENCODED) {
-    const result = await page.evaluate(path => encodePath(path), path)
+    const result = await page.evaluate(async path => {
+      const { encodePath } = await import('/src/resources.js')
+      return encodePath(path)
+    }, path)
     expect.soft(result, path).toBe(encoded)
   }
 })

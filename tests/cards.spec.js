@@ -153,7 +153,10 @@ test('an image or PDF card links its title to the file itself, with no source li
 
 test('a file extension is read from the file name, not from a folder name', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A')] })
-  const extensions = await page.evaluate(() => ['dir.v1/file', 'dir.v1/Note.MD', 'file'].map(fileExtension))
+  const extensions = await page.evaluate(async () => {
+    const { fileExtension } = await import('/src/resources.js')
+    return ['dir.v1/file', 'dir.v1/Note.MD', 'file'].map(fileExtension)
+  })
   expect(extensions).toEqual(['', 'md', ''])
 })
 

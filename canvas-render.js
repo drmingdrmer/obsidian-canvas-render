@@ -10,6 +10,7 @@ import {
   SIDE_NORMALS, sideAnchor, inferSide, edgeGeometry, bezierPoint, arrowPoints, contentBounds,
   viewSpan, flightPath, easeInOut, meetsRect, sideBeyond, lastExit, freeStretches, nearestFit,
 } from './src/geometry.js'
+import { encodePath, fileExtension, baseName, fetchFile, webUrl, directoryOf, createResources } from './src/resources.js'
 
 // ---------------------------------------------------------------- constants
 
@@ -351,6 +352,10 @@ const config = {
  */
 const layout = { nodes: [], elements: new Map(), edgesByNode: new Map(), authoredSizes: new Map() }
 
+/** The paths and links of the board's files, as `main` sets `config` up for them. */
+const { vaultUrl, noteHref, rawHref, imageUrls, assertAllowedHost, resolveVaultRoot, resolveAttachments } =
+  createResources(config, APP_URL, REMOTE_HOSTS)
+
 // --------------------------------------------------------------------- theme
 
 function preferredTheme() {
@@ -532,91 +537,6 @@ function resolveColor(value) {
 
 // ------------------------------------------------------------- node contents
 
-/** The scheme and host at the head of an absolute URL; everything after is path. */
-const ABSOLUTE_URL_HEAD = /^https?:\/\/[^/]*/i
-
-/**
- * Percent-encodes each segment but keeps the separators, and keeps an absolute
- * URL's scheme and host. Encoding the whole string in one go would escape the
- * slashes; leaving it alone would let a `#` in a file name cut the URL short.
- */
-function encodePath(path) {
-  const head = path.match(ABSOLUTE_URL_HEAD)
-  const prefix = head === null ? '' : head[0]
-  const segments = path.slice(prefix.length).split('/')
-  return prefix + segments.map(encodeURIComponent).join('/')
-}
-
-/**
- * The URL of a file in the vault, or null when it leads to a host the page does
- * not load from. The root does not keep every file on its own host: an empty
- * root passes `https://host/x` through, and `/` turns `/host/x` into `//host/x`.
- */
-function vaultUrl(path) {
-  const url = encodePath(config.vaultRoot + path)
-  if (!isAllowedSource(url)) return null
-  return url
-}
-
-/**
- * A link into the note views carries the attachment folder, and the vault root
- * it sits under, so that a note read on its own finds its images where the
- * board does.
- */
-function attachmentsQuery() {
-  if (config.attachments === null) return ''
-
-  const vault = encodeURIComponent(pathOnNotePage(config.vaultRoot))
-  const attachments = encodeURIComponent(config.attachments)
-  return `&vault=${vault}&attachments=${attachments}`
-}
-
-/**
- * The page a note link opens on: this one, when the board is the whole page,
- * or else the renderer's own page beside this module.
- */
-function notePage() {
-  return config.ownsPage ? '' : APP_URL.href
-}
-
-/**
- * A file's path, as the page that `notePage` names reads it. When the board is
- * mounted in another page, a relative path names a file beside that page, so
- * the link writes it from the site's root instead.
- */
-function pathOnNotePage(path) {
-  if (config.ownsPage) return path
-
-  const pageFolder = new URL('./', window.location.href)
-  const url = new URL(encodePath(path), pageFolder)
-  if (url.origin !== window.location.origin) return path
-  return decodeURIComponent(url.pathname)
-}
-
-function noteHref(path) {
-  const notePath = encodeURIComponent(pathOnNotePage(path))
-  return `${notePage()}?note=${notePath}${attachmentsQuery()}`
-}
-
-function rawHref(path) {
-  const notePath = encodeURIComponent(pathOnNotePage(path))
-  return `${notePage()}?raw=${notePath}${attachmentsQuery()}`
-}
-
-function fileExtension(path) {
-  const dotIndex = path.lastIndexOf('.')
-  const slashIndex = path.lastIndexOf('/')
-  const dotInName = dotIndex > slashIndex
-  if (!dotInName) return ''
-  return path.slice(dotIndex + 1).toLowerCase()
-}
-
-function baseName(path) {
-  const slashIndex = path.lastIndexOf('/')
-  const withExtension = slashIndex < 0 ? path : path.slice(slashIndex + 1)
-  return withExtension.replace(/\.md$/i, '')
-}
-
 /**
  * A relative image or link in markdown names a file beside the document it is
  * written in — the note, or the canvas for a text card — not beside this page.
@@ -687,24 +607,6 @@ function linkWikilink(link, documentPath) {
 }
 
 /**
- * The URLs an image may load from, in the order they are tried. Obsidian links
- * a file by its name alone when no other file in the vault has that name, and
- * finds it wherever it sits. A browser cannot search a vault, so such a name is
- * tried first in the attachment folder, when the `attachments` parameter names
- * one, and then beside the document.
- */
-function imageUrls(reference, baseUrl) {
-  const resolved = URL.parse(reference, baseUrl)
-  const besideDocument = resolved === null ? reference : resolved.href
-  const isNameAlone = !reference.includes('/') && URL.parse(reference) === null
-  if (config.attachments === null || !isNameAlone) return [besideDocument]
-
-  const folderUrl = new URL(encodePath(config.vaultRoot + config.attachments), window.location.href)
-  const inAttachments = new URL(reference, folderUrl)
-  return [inAttachments.href, besideDocument]
-}
-
-/**
  * Loads an image from the first of its URLs that answers. An image that none of
  * them loads names itself instead: with no alt text, a broken image collapses
  * to nothing, and the note reads on as if nothing were missing.
@@ -742,24 +644,6 @@ function placeholderElement(message) {
   el.className = 'canvas-node-placeholder'
   el.textContent = message
   return el
-}
-
-/**
- * A host that sends no `Access-Control-Allow-Origin` makes `fetch` reject with
- * a bare `TypeError` before any status code exists — the likeliest way a remote
- * vault fails, and the one an HTTP status cannot describe. A response with an
- * HTTP error status throws too, naming the file as `name`.
- */
-async function fetchFile(url, name) {
-  let response = null
-  try {
-    response = await fetch(url)
-  } catch (cause) {
-    const reason = 'the host is unreachable, or sends no CORS header for this page'
-    throw new Error(`Cannot reach ${url} — ${reason}`, { cause: cause })
-  }
-  if (!response.ok) throw new Error(`Cannot read ${name} (HTTP ${response.status})`)
-  return response
 }
 
 async function loadMarkdownInto(contentEl, node) {
@@ -806,19 +690,6 @@ function fillFileNode(contentEl, node) {
   loadMarkdownInto(contentEl, node).catch(error => {
     contentEl.replaceChildren(placeholderElement(error.message))
   })
-}
-
-/**
- * The URL a link card frames and links to, or null for anything but a web
- * page: the frame and the title would run a `javascript:` URL in this page.
- */
-function webUrl(url) {
-  const parsed = URL.parse(url, window.location.href)
-  if (parsed === null) return null
-
-  const isWebPage = parsed.protocol === 'http:' || parsed.protocol === 'https:'
-  if (!isWebPage) return null
-  return parsed.href
 }
 
 function fillLinkNode(contentEl, node) {
@@ -3157,70 +3028,6 @@ function drawCanvas(data) {
 function showStatus(message) {
   statusEl.textContent = message
   statusEl.hidden = false
-}
-
-/**
- * Content may come from this page's own origin, or over https from a host in
- * `REMOTE_HOSTS`. Any other host, and any other scheme — `data:`, `javascript:`
- * — is either a configuration mistake or an attempt to run foreign script here.
- */
-function isAllowedSource(path) {
-  const url = URL.parse(path, window.location.href)
-  if (url === null) return false
-
-  const isSameProtocol = url.protocol === window.location.protocol
-  const isSameHost = url.host === window.location.host
-  if (isSameProtocol && isSameHost) return true
-
-  const isHttps = url.protocol === 'https:'
-  const isAllowedHost = REMOTE_HOSTS.includes(url.hostname)
-  return isHttps && isAllowedHost
-}
-
-function assertAllowedHost(path, parameterName) {
-  if (isAllowedSource(path)) return
-
-  const hosts = REMOTE_HOSTS.join(', ')
-  throw new Error(
-    `the ${parameterName} parameter accepts a same-origin path or an https URL on ${hosts}, got ${path}`,
-  )
-}
-
-function directoryOf(path) {
-  const slashIndex = path.lastIndexOf('/')
-  if (slashIndex < 0) return ''
-  return path.slice(0, slashIndex + 1)
-}
-
-/**
- * File nodes store paths relative to the vault root. `vault` names that root;
- * left out, it is the directory holding the canvas file — which is where the
- * root sits whenever a canvas is deployed together with the notes it embeds.
- * The note views default to the note's own directory the same way.
- */
-function resolveVaultRoot(params, documentPath) {
-  const explicitRoot = params.get('vault')
-  if (explicitRoot === null) return directoryOf(documentPath)
-
-  assertAllowedHost(explicitRoot, 'vault')
-  if (explicitRoot === '') return ''
-  if (explicitRoot.endsWith('/')) return explicitRoot
-  return `${explicitRoot}/`
-}
-
-/**
- * The folder Obsidian puts new attachments in, under the vault root, as its
- * "Default location for new attachments" setting names it; null when the
- * `attachments` parameter names none.
- */
-function resolveAttachments(params) {
-  const folder = params.get('attachments')
-  if (folder === null) return null
-
-  assertAllowedHost(config.vaultRoot + folder, 'attachments')
-  if (folder === '') return ''
-  if (folder.endsWith('/')) return folder
-  return `${folder}/`
 }
 
 /** The file the file view shows, as `{ path, mode }`, or null while the view is closed. */

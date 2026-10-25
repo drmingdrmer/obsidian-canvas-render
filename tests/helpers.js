@@ -13,8 +13,8 @@ const ORIGIN = 'http://canvas.test/'
 // and call these internals of it, so the copy served to them puts them on window.
 const INTERNALS = [
   'view', 'layout', 'config', 'CARD_SIZE_STORAGE_KEY', 'renderMarkdown', 'sliceSubpath', 'resolveColor',
-  'encodePath', 'fileExtension', 'linkedCard', 'markdownElement', 'splitTextNode', 'applyView', 'zoomAt',
-  'applyCardSize', 'preferredCardSize', 'drawCanvas', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
+  'linkedCard', 'markdownElement', 'splitTextNode', 'applyView', 'zoomAt', 'applyCardSize', 'preferredCardSize',
+  'drawCanvas', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
 ]
 const EXPOSE_INTERNALS = `\nObject.assign(window, { ${INTERNALS.join(', ')} })\n`
 
