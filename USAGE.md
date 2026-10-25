@@ -24,7 +24,7 @@ Everything outside `vault/` is the application; `vault/` is one content bundle, 
 
 ## Deploying
 
-Any static host serves the repository as-is. On GitHub Pages, **keep the `.nojekyll` file in the repository root**: Jekyll compiles `.md` files into `.html` instead of copying them through, so without it every note 404s and every file node on the canvas fails to load.
+Any static host serves the repository as-is. A copy of the renderer alone takes `index.html`, `canvas-render.js`, `canvas-render.css`, and the `src/` and `lib/` folders: `canvas-render.js` imports its modules from `src/`. On GitHub Pages, **keep the `.nojekyll` file in the repository root**: Jekyll compiles `.md` files into `.html` instead of copying them through, so without it every note 404s and every file node on the canvas fails to load.
 
 ## URL parameters
 

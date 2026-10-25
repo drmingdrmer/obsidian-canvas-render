@@ -16,7 +16,7 @@ const ORIGIN = 'http://canvas.test/'
 const INTERNALS = [
   'view', 'model', 'config', 'renderMarkdown', 'sliceSubpath: markdown.sliceSubpath',
   'linkedCard', 'markdownElement', 'splitTextNode: markdown.splitTextNode', 'applyView: viewport.applyView',
-  'zoomAt: viewport.zoomAt', 'drawCanvas', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
+  'zoomAt: viewport.zoomAt', 'assertAllowedHost', 'resolveVaultRoot', 'resolveAttachments',
 ]
 const BOARD_RETURN = '\n  return { boardFragment, main, showStatus }\n'
 const EXPOSE_INTERNALS = `\n  Object.assign(window, { ${INTERNALS.join(', ')} })${BOARD_RETURN}`
