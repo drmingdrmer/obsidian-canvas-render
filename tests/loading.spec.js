@@ -108,6 +108,14 @@ const BROKEN_CANVASES = [
   [{ nodes: [{ id: 'f', type: 'file', x: 0, y: 0, width: 300, height: 100 }] }, 'node "f" needs a string in "file"'],
   [{ nodes: [{ id: 'l', type: 'link', x: 0, y: 0, width: 300, height: 100 }] }, 'node "l" needs a string in "url"'],
   [{ nodes: [textCard('a', 0, 0, 'A')], edges: [null] }, 'edge 0 is not a JSON object'],
+  [{ nodes: [textCard('a', 0, 0, 'A'), { ...textCard('b', 300, 0, 'B'), color: 7 }] }, 'node "b" needs a string in "color"'],
+  [{ nodes: [{ id: 'f', type: 'file', file: 'n.md', subpath: 7, x: 0, y: 0, width: 300, height: 100 }] }, 'node "f" needs a string in "subpath"'],
+  [{ nodes: [{ id: 'g', type: 'group', label: 7, x: 0, y: 0, width: 300, height: 100 }] }, 'node "g" needs a string in "label"'],
+  [{ nodes: [{ id: 'g', type: 'group', background: 7, x: 0, y: 0, width: 300, height: 100 }] }, 'node "g" needs a string in "background"'],
+  [{ nodes: [textCard('a', 0, 0, 'A'), textCard('b', 300, 0, 'B')], edges: [{ id: 'e', fromNode: 'a', toNode: 'b', fromSide: 'sideways' }] }, 'edge "e" needs top, right, bottom or left in "fromSide"'],
+  [{ nodes: [textCard('a', 0, 0, 'A'), textCard('b', 300, 0, 'B')], edges: [{ fromNode: 'a', toNode: 'b', toSide: 'toString' }] }, 'edge 0 needs top, right, bottom or left in "toSide"'],
+  [{ nodes: [textCard('a', 0, 0, 'A'), textCard('b', 300, 0, 'B')], edges: [{ id: 'e', fromNode: 'a', toNode: 'b', color: 7 }] }, 'edge "e" needs a string in "color"'],
+  [{ nodes: [textCard('a', 0, 0, 'A'), textCard('b', 300, 0, 'B')], edges: [{ id: 'e', fromNode: 'a', toNode: 'b', label: 7 }] }, 'edge "e" needs a string in "label"'],
 ]
 
 test('a canvas with a broken node or edge names it and the field, and draws nothing', async ({ page }) => {
@@ -120,6 +128,20 @@ test('a canvas with a broken node or edge names it and the field, and draws noth
     await expect.soft(page.locator('#status'), message).toHaveText(message)
     await expect.soft(page.locator('.canvas-node'), message).toHaveCount(0)
   }
+})
+
+test('optional fields set to null draw as if they were left out', async ({ page }) => {
+  const canvas = {
+    nodes: [
+      { ...textCard('a', 0, 0, 'A'), color: null },
+      { id: 'g', type: 'group', label: null, background: null, x: 0, y: 200, width: 300, height: 100 },
+      { id: 'f', type: 'file', file: 'n.md', subpath: null, x: 400, y: 0, width: 300, height: 100 },
+    ],
+    edges: [{ id: 'e', fromNode: 'a', toNode: 'f', fromSide: null, toSide: null, color: null, label: null }],
+  }
+  await openBoard(page, canvas, { 'n.md': 'the note' })
+  await expect(page.locator('.canvas-node')).toHaveCount(3)
+  await expect(page.locator('.canvas-edge-line')).toHaveCount(1)
 })
 
 test('a canvas without nodes draws an empty board', async ({ page }) => {

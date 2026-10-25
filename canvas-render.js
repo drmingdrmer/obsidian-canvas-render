@@ -3275,10 +3275,23 @@ function isJsonObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * Throws when an optional field holds anything but a string, naming its owner
+ * and the field. A field set to null is drawn as one left out.
+ */
+function validateOptionalString(name, record, field) {
+  const value = record[field]
+  if (value === undefined || value === null) return
+  if (typeof value !== 'string') throw new TypeError(`${name} needs a string in "${field}"`)
+}
+
 /** The string field each node type draws from, as JSON Canvas names it. */
 const CONTENT_FIELDS = new Map([['text', 'text'], ['file', 'file'], ['link', 'url']])
 
-/** Throws when a node lacks a field that drawing reads, naming the node and the field. */
+/**
+ * Throws when a node lacks a field that drawing reads, or holds one of the
+ * wrong type, naming the node and the field.
+ */
 function validateNode(node, index) {
   if (!isJsonObject(node)) throw new TypeError(`node ${index} is not a JSON object`)
   if (typeof node.id !== 'string') throw new TypeError(`node ${index} needs a string in "id"`)
@@ -3288,10 +3301,35 @@ function validateNode(node, index) {
   for (const field of ['x', 'y', 'width', 'height']) {
     if (!Number.isFinite(node[field])) throw new TypeError(`${name} needs a number in "${field}"`)
   }
+  validateOptionalString(name, node, 'color')
+  if (node.type === 'file') validateOptionalString(name, node, 'subpath')
+  if (node.type === 'group') {
+    validateOptionalString(name, node, 'label')
+    validateOptionalString(name, node, 'background')
+  }
 
   const contentField = CONTENT_FIELDS.get(node.type)
   if (contentField === undefined) return
   if (typeof node[contentField] !== 'string') throw new TypeError(`${name} needs a string in "${contentField}"`)
+}
+
+/**
+ * Throws when an edge holds a field that drawing cannot read, naming the edge
+ * and the field. An edge to a card the board lacks is no error: drawCanvas
+ * leaves it out.
+ */
+function validateEdge(edge, index) {
+  if (!isJsonObject(edge)) throw new TypeError(`edge ${index} is not a JSON object`)
+
+  const name = typeof edge.id === 'string' ? `edge "${edge.id}"` : `edge ${index}`
+  for (const field of ['fromSide', 'toSide']) {
+    const side = edge[field]
+    if (side === undefined || side === null) continue
+    const isSide = Object.keys(SIDE_NORMALS).includes(side)
+    if (!isSide) throw new TypeError(`${name} needs top, right, bottom or left in "${field}"`)
+  }
+  validateOptionalString(name, edge, 'color')
+  validateOptionalString(name, edge, 'label')
 }
 
 function drawCanvas(data) {
@@ -3311,7 +3349,7 @@ function drawCanvas(data) {
     nodesById.set(node.id, node)
   }
   for (const [index, edge] of edges.entries()) {
-    if (!isJsonObject(edge)) throw new TypeError(`edge ${index} is not a JSON object`)
+    validateEdge(edge, index)
   }
 
   layout.nodes = nodes
