@@ -27,7 +27,10 @@ function cardBox(card) {
 }
 
 test('a press of Space draws the focused card whole at 100% over a zoomed-out board, and the next press puts it back', async ({ page }) => {
-  await openBoard(page, BOARD, {}, '&cards=compact')
+  // Card a draws its lines while the view is fitted to it at 100%, and keeps
+  // them as Fit zooms out to the whole board.
+  await openBoard(page, BOARD, {}, '&cards=compact&focus=a')
+  await page.locator('#zoom-fit').click()
   const card = page.locator('.canvas-node').first()
   const content = card.locator('.canvas-node-content')
   await content.click()
@@ -209,6 +212,17 @@ test('a list, a quote or a rule that starts a text card starts below the enlarge
     const block = await card.locator(selector).boundingBox()
     expect(block.y).toBeCloseTo(button.y + button.height, 1)
   }
+})
+
+test('Space on a card that shows its title alone draws what it holds', async ({ page }) => {
+  await openBoard(page, BOARD)
+  const card = page.locator('.canvas-node').first()
+  const content = card.locator('.canvas-node-content')
+  // On a board drawn at about 0.3, card a shows its header alone.
+  await expect(content).toBeEmpty()
+  await content.click()
+  await page.keyboard.press('Space')
+  await expect(content).toContainText('line 9')
 })
 
 test('a card that Space enlarged goes back when the focus moves to another card', async ({ page }) => {

@@ -94,6 +94,14 @@ const MAX_TEXT_SCALE = 4
 const TEXT_SCALE_STEP = 2 ** (1 / 7)
 
 /**
+ * A card draws what it holds once it is in view on a board drawn at
+ * CONTENT_MIN_ZOOM or more. Below that its text is too small to read, so a
+ * board zoomed out to fit shows each card's title alone, and loads no note.
+ * Text drawn larger than its own size makes up for a smaller zoom.
+ */
+const CONTENT_MIN_ZOOM = 0.5
+
+/**
  * An enlarged card is at least as large as the same card in Wide: when the
  * room right of or below its corner is smaller, the card moves left or up.
  * It stays ENLARGED_MARGIN clear of the board's edges and of the controls.
@@ -1092,7 +1100,10 @@ function createNodeElement(node) {
   return el
 }
 
-/** Draws into an element what the board draws in a card: the card's colour, and what it holds. */
+/**
+ * Draws into an element what the board draws in a card: the card's colour, its
+ * title, and the box that `fillNodeContent` draws what it holds into.
+ */
 function fillNodeElement(el, node) {
   const color = resolveColor(node.color)
   if (color) {
@@ -1114,8 +1125,15 @@ function fillNodeElement(el, node) {
   const contentEl = document.createElement('div')
   contentEl.className = 'canvas-node-content'
   el.appendChild(contentEl)
+}
 
+/** Draws what a card holds into its box: its text, its file or its web page. A group holds nothing. */
+function fillNodeContent(el, node) {
+  if (node.type === 'group') return
+
+  const contentEl = el.querySelector(':scope > .canvas-node-content')
   if (node.type === 'text') {
+    const text = splitTextNode(node.text)
     contentEl.replaceChildren(markdownElement(renderMarkdown(text.body), config.canvasPath))
   } else if (node.type === 'file') {
     fillFileNode(contentEl, node)
@@ -1124,6 +1142,48 @@ function fillNodeElement(el, node) {
   } else {
     contentEl.replaceChildren(placeholderElement(`Unsupported node type: ${node.type}`))
   }
+}
+
+/** The cards on the board that have not drawn what they hold yet. */
+const unfilledNodes = new Set()
+
+/**
+ * Draws what each card in view holds, while the board is drawn large enough to
+ * read it: see CONTENT_MIN_ZOOM. A card keeps what it has drawn.
+ */
+function fillCardsInView() {
+  if (unfilledNodes.size === 0) return
+  const zoom = view.zoom * Math.max(config.textScale, 1)
+  if (zoom < CONTENT_MIN_ZOOM) return
+
+  const boardRect = wrapperEl.getBoundingClientRect()
+  const rect = viewRect(boardRect.width, boardRect.height)
+  for (const node of unfilledNodes) {
+    if (meetsRect(node, rect)) fillCard(node)
+  }
+}
+
+/** The id of the frame that draws the cards in view, or 0 while none is due. */
+let fillFrame = 0
+
+/**
+ * Draws the cards in view on the next frame, once however many changes ask for
+ * it. A card drawn inside `cardSizeObserver`'s callback, where a refit moves the
+ * view, would change size there, and the observer reports that as a loop error.
+ */
+function scheduleFillCards() {
+  if (fillFrame !== 0) return
+  fillFrame = requestAnimationFrame(() => {
+    fillFrame = 0
+    fillCardsInView()
+  })
+}
+
+/** Draws what a card on the board holds, unless it has already. */
+function fillCard(node) {
+  const unfilled = unfilledNodes.delete(node)
+  if (!unfilled) return
+  fillNodeContent(layout.elements.get(node.id), node)
 }
 
 // -------------------------------------------------------------- edge element
@@ -1221,6 +1281,7 @@ function applyView() {
   scheduleViewUrl()
   placeEnlargedCard()
   scheduleMarginTitles()
+  scheduleFillCards()
 
   const zoomLabel = `${Math.round(view.zoom * 100)}%`
   if (zoomLabel === shownZoomLabel) return
@@ -1250,6 +1311,7 @@ function applyTextScale(textScale) {
   canvasEl.style.setProperty('--text-scale', textScale)
   const shown = Number(textScale.toPrecision(2))
   textResetEl.textContent = `${shown}×`
+  scheduleFillCards()
 }
 
 /**
@@ -1591,6 +1653,7 @@ function installViewportControls() {
     refitView()
     scheduleViewUrl()
     placeEnlargedCard()
+    scheduleFillCards()
   })
   observer.observe(wrapperEl)
 }
@@ -2136,6 +2199,8 @@ function enlargeCard(cardEl) {
 
   enlargedCardEl = cardEl
   enlargedCardStyle = cardEl.style.cssText
+  // A card enlarged on a board zoomed out may not have drawn what it holds yet.
+  fillCard(observedNodes.get(cardEl))
   cardEl.dataset.enlarged = 'true'
   cardEl.querySelector('.canvas-node-enlarge').setAttribute('aria-pressed', 'true')
   placeEnlargedCard()
@@ -2610,6 +2675,7 @@ function createNeighbourPreview(found) {
   el.className = 'canvas-neighbour'
   el.dataset.direction = found.direction
   fillNodeElement(el, found.node)
+  fillNodeContent(el, found.node)
 
   const goEl = document.createElement('button')
   goEl.className = 'canvas-neighbour-go'
@@ -3062,7 +3128,7 @@ function cardName(node) {
   return ''
 }
 
-/** The markdown a card shows, as text: a note once it has loaded, or a text card's header and body. */
+/** The markdown a card shows, as text: a text card's header, and the card's text or note once it has drawn it. */
 function renderedText(node) {
   const previewEls = layout.elements.get(node.id).querySelectorAll('.markdown-preview')
   const texts = [...previewEls].map(previewEl => previewEl.textContent)
@@ -3128,6 +3194,11 @@ function showSearchResults() {
  * list and keeps the query, so a click in the box brings the list back.
  */
 function installSearch() {
+  // A search looks through what every card holds, so a press in the box draws
+  // every card, and the notes load while the query is typed.
+  searchEl.addEventListener('focus', () => {
+    for (const node of unfilledNodes) fillCard(node)
+  })
   searchEl.addEventListener('input', showSearchResults)
   searchEl.addEventListener('click', showSearchResults)
   searchEl.addEventListener('keydown', event => {
@@ -3240,6 +3311,8 @@ function drawCanvas(data) {
     observeCardSize(el, node)
     canvasEl.appendChild(el)
   }
+  // A card draws what it holds once it comes into view: see fillCardsInView.
+  for (const node of others) unfilledNodes.add(node)
 
   readCardSizes()
   resizeEdgeLayer(contentBounds(nodes))

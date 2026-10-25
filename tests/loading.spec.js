@@ -36,7 +36,9 @@ test('the demo board, served by serve.sh, draws every card and edge, and loads e
     await page.goto(url)
     await expect(page.locator('.canvas-node')).toHaveCount(demo.nodes.length)
     await expect(page.locator('.canvas-edge-line')).toHaveCount(demo.edges.length)
-    // Each file card holds a placeholder until its note renders.
+    // A press in the search box draws every card, and each file card holds a
+    // placeholder until its note renders.
+    await page.locator('#search').click()
     await expect(page.locator('.canvas-node-placeholder')).toHaveCount(0)
     expect(errors).toEqual([])
   } finally {
@@ -158,4 +160,94 @@ test('a file card shows Loading… until its note arrives, or why it failed', as
 
   releaseNote()
   await expect(contents.nth(0)).toHaveText('late note')
+})
+
+test('a card in view shows its title alone on a board drawn below 50%, and loads its note at 50%', async ({ page }) => {
+  let requests = 0
+  const note = route => {
+    requests += 1
+    return route.fulfill({ body: 'the note' })
+  }
+  const nodes = [{ id: 'n', type: 'file', file: 'n.md', x: 0, y: 0, width: 200, height: 100 }]
+  // The card's centre, the canvas point (100, 50), is at the centre of the
+  // 1280 × 720 window.
+  await openBoard(page, { nodes }, { 'n.md': note }, '&at=100,50,0.4')
+  const content = page.locator('.canvas-node-content')
+  await expect(page.locator('.canvas-node-title-text')).toHaveText('n')
+  await expect(content).toBeEmpty()
+  expect(requests).toBe(0)
+
+  await page.evaluate(() => zoomAt(640, 360, 0.5))
+  await expect(content).toHaveText('the note')
+  expect(requests).toBe(1)
+})
+
+test('text drawn larger makes up for a smaller zoom', async ({ page }) => {
+  await openBoard(page, { nodes: [textCard('t', 0, 0, 'Head\nbody')] }, {}, '&at=100,50,0.3')
+  const content = page.locator('.canvas-node-content')
+  await expect(content).toBeEmpty()
+
+  // Six steps draw the text 1.81 times its size, so the board drawn at 30%
+  // counts as drawn at 54%.
+  for (let step = 0; step < 6; step++) await page.locator('#text-larger').click()
+  await expect(content).toHaveText('body')
+})
+
+test('a card out of view loads its note once the view pans to it', async ({ page }) => {
+  let requests = 0
+  const note = route => {
+    requests += 1
+    return route.fulfill({ body: 'the far note' })
+  }
+  const nodes = [textCard('a', 0, 0, 'A\nnear'), { id: 'f', type: 'file', file: 'far.md', x: 2000, y: 0, width: 200, height: 100 }]
+  // At 100%, card a is at the centre of the window, and card f 1900 px right
+  // of it, out of view.
+  await openBoard(page, { nodes }, { 'far.md': note }, '&at=100,50,1')
+  const contents = page.locator('.canvas-node-content')
+  await expect(contents.nth(0)).toHaveText('near')
+  await expect(contents.nth(1)).toBeEmpty()
+  expect(requests).toBe(0)
+
+  await page.evaluate(() => {
+    view.x -= 2000
+    applyView()
+  })
+  await expect(contents.nth(1)).toHaveText('the far note')
+  expect(requests).toBe(1)
+})
+
+test('a card that a refit brings into view draws what it holds without a ResizeObserver loop error', async ({ page }) => {
+  let releaseNote
+  const noteHeld = new Promise(resolve => {
+    releaseNote = resolve
+  })
+  const heldNote = async route => {
+    await noteHeld
+    const paragraphs = Array.from({ length: 40 }, (_, i) => `para ${i}`)
+    await route.fulfill({ body: paragraphs.join('\n\n') })
+  }
+  const nodes = [
+    { id: 'f', type: 'file', file: 'f.md', x: 0, y: 0, width: 200, height: 100 },
+    textCard('t', 0, 400, 'T\nbelow'),
+  ]
+  // The view fits card f, and card t lies below the window. The note grows f
+  // to Compact's cap, the view fits f again, and t comes into view.
+  await openBoard(page, { nodes }, { 'f.md': heldNote }, '&cards=compact&focus=f')
+  const below = page.locator('.canvas-node-content').nth(1)
+  await expect(below).toBeEmpty()
+
+  releaseNote()
+  await expect(below).toHaveText('below')
+})
+
+test('a card that a wider window brings into view loads its note', async ({ page }) => {
+  const nodes = [textCard('a', 0, 0, 'A\nnear'), { id: 'f', type: 'file', file: 'far.md', x: 2000, y: 0, width: 200, height: 100 }]
+  // At 100%, card f starts 2540 px right of the window's left edge, out of
+  // view. A view that a link names keeps its corner as the window grows.
+  await openBoard(page, { nodes }, { 'far.md': 'the far note' }, '&at=100,50,1')
+  const far = page.locator('.canvas-node-content').nth(1)
+  await expect(far).toBeEmpty()
+
+  await page.setViewportSize({ width: 3000, height: 720 })
+  await expect(far).toHaveText('the far note')
 })

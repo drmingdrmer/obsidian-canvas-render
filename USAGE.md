@@ -98,6 +98,8 @@ Dragging the background pans. ⌘/Ctrl + wheel, or a trackpad pinch, zooms. A pl
 
 Alt + wheel, or Alt with a trackpad pinch, makes the text on the board larger or smaller, between 0.25× and 4×. The cards, the edges and the images keep their place and their size. Text at 0.5× takes a quarter of the room, so a card shows about four times as much of its note without being opened. A card that `Wide` or `Compact` sizes by its content grows or shrinks with its text.
 
+A card shows its title alone until it is in view on a board drawn at 50% or more. Then it loads and draws what it holds, its note, text, image or web page, and keeps it. So a board that fits below 50% opens without loading any note, however many it holds. Text drawn larger than its own size makes up for a smaller zoom: at 25%, text at 2× draws the cards in view.
+
 Pressing a card puts the focus on it, marked by an accent border. A wheel over that one card then scrolls its content, which is how a card longer than its box is read. Pressing the board takes the focus back, and the wheel moves the board again.
 
 Pressing Space shows the focused card whole, over the board, until Space is pressed again or the focus leaves the card. The card is drawn at 100%, or at the board's zoom when that is larger. It grows right and down from its top-left corner, up to the edges of the board: at least 520 px wide, and as tall as its content. A longer card scrolls inside. Near the right or bottom edge of the board, the card moves left or up, only as far as it takes to be as large as the same card in Wide: 520 px wide, and up to 480 px tall. Its box on the board, its edges and the other cards stay where they are. The button in each card's top-left corner does the same on a touch screen: a press on it puts the focus on the card and enlarges it, and a second press puts the card back. Every card's first line starts right of that corner, so the button covers none of its text.
@@ -124,7 +126,7 @@ Nothing is written back to the file: a reload restores the board the `.canvas` d
 
 The bar in the corner holds the search box, the zoom, the text size, the size of every card, the grid, the history and the theme.
 
-The search box lists the cards whose name or text holds what is typed, ignoring case: a note card's file name and its note, a text card's text, a link card's URL and a group's label. Cards whose name holds it come first. Picking one, or pressing Enter for the first, flies the view to that card, fits it at 100% at most, and puts the focus on it. Escape clears the box. The view stays on that card while the window or the card changes size, until the board is moved by hand.
+The search box lists the cards whose name or text holds what is typed, ignoring case: a note card's file name and its note, a text card's text, a link card's URL and a group's label. Cards whose name holds it come first. Picking one, or pressing Enter for the first, flies the view to that card, fits it at 100% at most, and puts the focus on it. Escape clears the box. The view stays on that card while the window or the card changes size, until the board is moved by hand. A press in the search box draws every card, so that every note loads while the query is typed, and a note is searched once it has loaded.
 
 The text size's `−` and `+` make the text about 10% smaller or larger, and seven presses halve or double it. The label between them shows the text size, and resets it to 1×.
 

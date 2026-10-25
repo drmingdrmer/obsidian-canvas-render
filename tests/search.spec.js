@@ -21,10 +21,12 @@ const LONG_NOTE = Array.from({ length: 40 }, (_, i) => `para ${i}`).join('\n\n')
 
 test('the search lists the cards whose name or text holds the query, named cards first', async ({ page }) => {
   await openBoard(page, BOARD, { 'pages/def-Round.md': NOTE })
-  // A note is searched once it has loaded.
-  await expect(page.locator('.canvas-node[data-type="file"] .markdown-preview')).toHaveText(NOTE)
   const search = page.locator('#search')
   const entries = page.locator('#search-results > *')
+  // The board fits below 10%, where a card shows its title alone. A press in
+  // the search box draws every card, and a note is searched once it has loaded.
+  await search.click()
+  await expect(page.locator('.canvas-node[data-type="file"] .markdown-preview')).toHaveText(NOTE)
 
   await search.fill('round')
   await expect(entries).toHaveText(['Rounds', 'def-Round', 'Ballot', 'Far away'])
