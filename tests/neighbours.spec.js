@@ -73,11 +73,26 @@ test('Out previews each card the focused card has a dependency edge to, right of
   await expect(page.locator('.canvas-neighbour-link .canvas-edge-arrow')).toHaveAttribute('points', '880,450 867,443 867,457')
 })
 
+test('In sits half out of the focused card\'s left side, just below where the dependency edges enter it, and Out half out of its right side', async ({ page }) => {
+  await openBoard(page, BOARD, {}, '&focus=f')
+  const card = page.locator('.canvas-node').first()
+  // The arrows of the edges from b and a meet f's left side at (540, 360), and
+  // spread 7 px above and below it.
+  const arrow = await page.locator('.canvas-edges .canvas-edge-arrow').first().boundingBox()
+  expect(arrow).toEqual({ x: 527, y: 353, width: 13, height: 14 })
+  // Each button is 28 px, centred on its side inside f's 1 px border, and
+  // starts 4 px below the arrows. f's right side is at x = 740.
+  const inBox = await card.locator('[data-direction="in"]').boundingBox()
+  expect(inBox).toEqual({ x: 527, y: 371, width: 28, height: 28 })
+  const outBox = await card.locator('[data-direction="out"]').boundingBox()
+  expect(outBox).toEqual({ x: 725, y: 371, width: 28, height: 28 })
+})
+
 test('In and Out show their previews together, and a second press of each removes its own', async ({ page }) => {
   await openBoard(page, BOARD, {}, '&focus=f')
-  const bar = page.locator('.canvas-node').first().locator('.canvas-node-bar')
-  const inToggle = bar.locator('[data-direction="in"]')
-  const outToggle = bar.locator('[data-direction="out"]')
+  const card = page.locator('.canvas-node').first()
+  const inToggle = card.locator('[data-direction="in"]')
+  const outToggle = card.locator('[data-direction="out"]')
   await inToggle.click()
   await outToggle.click()
   const previews = page.locator('.canvas-neighbour')
@@ -142,13 +157,13 @@ test('the button on a preview flies the view to its card, and puts the focus the
 
 test('In and its previews are blue, and Out and its previews orange', async ({ page }) => {
   await openBoard(page, BOARD, {}, '&focus=f')
-  const bar = page.locator('.canvas-node').first().locator('.canvas-node-bar')
-  await bar.locator('[data-direction="in"]').click()
-  await bar.locator('[data-direction="out"]').click()
+  const card = page.locator('.canvas-node').first()
+  await card.locator('[data-direction="in"]').click()
+  await card.locator('[data-direction="out"]').click()
 
   const blue = 'rgb(37, 99, 235)'
   const orange = 'rgb(234, 88, 12)'
-  const toggleColors = await bar.locator('.canvas-node-neighbours').evaluateAll(els => {
+  const toggleColors = await card.locator('.canvas-node-neighbours').evaluateAll(els => {
     return els.map(el => getComputedStyle(el).color)
   })
   expect(toggleColors).toEqual([blue, orange])
@@ -186,7 +201,8 @@ test('the previews follow the card they stand around as it is dragged', async ({
   await openBoard(page, BOARD, {}, '&focus=f')
   await page.locator('.canvas-node').first().locator('[data-direction="in"]').click()
   const header = await page.locator('.canvas-node').first().locator('.canvas-node-header').boundingBox()
-  await dragBy(page, header.x + 20, header.y + 10, 40, 20)
+  // The middle of the header, clear of the enlarge button in its corner.
+  await dragBy(page, header.x + header.width / 2, header.y + 10, 40, 20)
 
   // At zoom 1, f has moved by (40, 20), and every preview with it.
   const boxes = await previewBoxes(page)
@@ -217,9 +233,9 @@ test('a card that several edges join is previewed once in each direction, and an
     ],
   }
   await openBoard(page, board, {}, '&focus=f')
-  const bar = page.locator('.canvas-node').first().locator('.canvas-node-bar')
-  await bar.locator('[data-direction="in"]').click()
-  await bar.locator('[data-direction="out"]').click()
+  const card = page.locator('.canvas-node').first()
+  await card.locator('[data-direction="in"]').click()
+  await card.locator('[data-direction="out"]').click()
 
   await expect(page.locator('.canvas-neighbour')).toHaveText(['Alpha', 'Alpha'])
   // The one for the edges in stands left of f, and the one for the edge out right of it.

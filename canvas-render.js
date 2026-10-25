@@ -1489,10 +1489,10 @@ function wheelScrollsCard(target) {
 }
 
 /**
- * Card content scrolls and selects text, a card title is a link, the controls
- * and the bar in a card's or a preview's corner hold buttons, and an enlarged
- * card is there to be read: a press on any of them neither pans the viewport
- * nor drags the card it belongs to.
+ * Card content scrolls and selects text, a card title is a link, the controls,
+ * the bar in a preview's corner and a card's own buttons are there to be
+ * pressed, and an enlarged card is there to be read: a press on any of them
+ * neither pans the viewport nor drags the card it belongs to.
  *
  * Leaving the controls out of this would make them unclickable rather than
  * merely draggable: the pan captures the pointer, capture retargets the mouse
@@ -1500,7 +1500,7 @@ function wheelScrollsCard(target) {
  */
 function isInteractiveTarget(target) {
   if (!(target instanceof Element)) return false
-  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-bar, .canvas-node[data-enlarged="true"], .canvas-controls, .canvas-history, .canvas-margin-title'
+  const interactive = '.canvas-node-content, .canvas-node-title-link, .canvas-node-button, .canvas-node-bar, .canvas-node[data-enlarged="true"], .canvas-controls, .canvas-history, .canvas-margin-title'
   return target.closest(interactive) !== null
 }
 
@@ -2145,8 +2145,7 @@ function enlargeCard(cardEl) {
  * Sizes the enlarged card to its content, from its own box on the board up to
  * the room right of and below the top-left corner the board draws it at. Where
  * that room is smaller than the same card in Wide, the card moves left or up,
- * only as far as it takes to be that large. The enlarge button stays where the
- * board draws it, so that a second press in the same place puts the card back.
+ * only as far as it takes to be that large.
  * Sizes are in the enlarged card's own pixels, which the card scales from the
  * board's zoom to its own.
  */
@@ -2166,7 +2165,7 @@ function placeEnlargedCard() {
   const margin = ENLARGED_MARGIN / cardZoom
   const roomRight = wrapperEl.getBoundingClientRect().width / cardZoom - margin
   const roomBottom = controlsEl.offsetTop / cardZoom - margin
-  // As large as the room, but never smaller than the card on the board, so that it covers the button.
+  // As large as the room, but never smaller than the card on the board.
   const maxWidth = Math.max(roomRight - margin, boxWidth)
   const maxHeight = Math.max(roomBottom - margin, boxHeight)
 
@@ -2189,15 +2188,12 @@ function placeEnlargedCard() {
   const shiftY = enlargedShift(boxY, height, boxHeight, roomBottom)
   cardEl.style.transform = `scale(${cardZoom / view.zoom}) translate(${-shiftX}px, ${-shiftY}px)`
   cardEl.style.setProperty('--zoom', cardZoom)
-  // Moves the button from the enlarged card's top-right corner back to the board card's.
-  cardEl.style.setProperty('--enlarge-top', `${shiftY}px`)
-  cardEl.style.setProperty('--enlarge-right', `${width - boxWidth - shiftX}px`)
 }
 
 /**
  * How far an enlarged card moves left or up from its box on the board, along
  * one axis: as far as it takes to end at `roomEnd`, but never so far that it
- * stops covering that box, where its enlarge button stays.
+ * stops covering that box, where its edges end.
  */
 function enlargedShift(boxStart, size, boxSize, roomEnd) {
   const overflow = boxStart + size - roomEnd
@@ -2226,22 +2222,24 @@ function restoreEnlargedCard() {
 const ENLARGE_ICON = '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/>'
 
 /**
- * The button in a card's top-right corner enlarges the card until it is pressed
+ * The button in a card's top-left corner enlarges the card until it is pressed
  * again, or until the focus leaves the card. It is how a touch screen, with no
  * Space to press, reads a card whole.
  */
-function installNodeEnlarge(el, barEl) {
+function installNodeEnlarge(el) {
   const buttonEl = document.createElement('button')
-  buttonEl.className = 'canvas-node-enlarge'
+  buttonEl.className = 'canvas-node-button canvas-node-enlarge'
   buttonEl.type = 'button'
   buttonEl.title = 'Show the whole card, or press Space'
   buttonEl.setAttribute('aria-pressed', 'false')
   buttonEl.appendChild(createIcon(ENLARGE_ICON))
-  barEl.appendChild(buttonEl)
+  el.appendChild(buttonEl)
 
   // A pressed button would keep the keyboard focus, and a later Space would press it again.
   buttonEl.addEventListener('pointerdown', event => event.preventDefault())
   buttonEl.addEventListener('click', () => {
+    // Enter on the button skips the press that puts the focus on its card.
+    focusCard(el)
     if (enlargedCardEl === el) restoreEnlargedCard()
     else enlargeCard(el)
   })
@@ -2542,17 +2540,16 @@ const LOCATE_ICON =
   '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>'
 
 /**
- * The bar in a card's top-right corner holds In and Out, and the button that
- * enlarges the card. In, or Out, is greyed out on a card that no dependency
- * edge leads into, or out of.
+ * A card's buttons: In on its left side and Out on its right side, where the
+ * dependency edges enter and leave it, and the button that enlarges the card.
+ * In, or Out, is greyed out on a card that no dependency edge leads into, or
+ * out of.
  */
-function installNodeBar(node) {
+function installNodeButtons(node) {
   const el = layout.elements.get(node.id)
-  const barEl = document.createElement('div')
-  barEl.className = 'canvas-node-bar'
   for (const [direction, { label, title }] of Object.entries(NEIGHBOUR_BUTTONS)) {
     const buttonEl = document.createElement('button')
-    buttonEl.className = 'canvas-node-neighbours'
+    buttonEl.className = 'canvas-node-button canvas-node-neighbours'
     buttonEl.type = 'button'
     buttonEl.dataset.direction = direction
     buttonEl.textContent = label
@@ -2563,16 +2560,15 @@ function installNodeBar(node) {
     // As with the enlarge button, a press leaves the keyboard focus where it was.
     buttonEl.addEventListener('pointerdown', event => event.preventDefault())
     buttonEl.addEventListener('click', () => toggleNeighbours(node, direction))
-    barEl.appendChild(buttonEl)
+    el.appendChild(buttonEl)
   }
   // A group is all frame, with nothing to read.
-  if (node.type !== 'group') installNodeEnlarge(el, barEl)
-  el.appendChild(barEl)
+  if (node.type !== 'group') installNodeEnlarge(el)
 }
 
 /**
  * Shows the previews of a card's neighbours in one direction, or removes them.
- * The card is the focused one, as its bar shows on no other card.
+ * The card is the focused one, as In and Out show on no other card.
  */
 function toggleNeighbours(node, direction) {
   if (shownDirections.has(direction)) shownDirections.delete(direction)
@@ -3263,7 +3259,7 @@ function drawCanvas(data) {
   }
 
   // In and Out tell from the edges whether the card has a neighbour to show.
-  for (const node of nodes) installNodeBar(node)
+  for (const node of nodes) installNodeButtons(node)
 }
 
 // ----------------------------------------------------------------- bootstrap

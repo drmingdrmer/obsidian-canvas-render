@@ -205,31 +205,86 @@
   display: none;
 }
 
-/* The bar in a card's top-right corner, with In, Out and the button that
-   enlarges the card. It stays one size on screen at any zoom, so it shows on
-   the focused card alone: on a board zoomed out, it would cover much of any
-   small card the pointer crossed.
-   Its corner sits on the card's outer corner, past the 1 px border, and is
-   moved 4 px inwards on screen. While the card is enlarged, `--enlarge-top` and
-   `--enlarge-right` keep it where the card's corner is on the board. A preview's
-   bar, with the button that flies to its card, looks the same, and always shows. */
+/* A card's buttons: In and Out on its sides, and the button that enlarges the
+   card in its top-left corner. */
+.canvas-node-button {
+  position: absolute;
+}
+
+/* In and Out sit half in and half out of the card's left and right sides, just
+   below the middle of the side, where the dependency edges meet it. An edge's
+   arrow spreads 7 units either side of that point, the ARROW_HALF_WIDTH of
+   canvas-render.js, and the button starts 4 px on screen below the arrow.
+   They stay one size on screen at any zoom, so they show on the focused card
+   alone: on a board zoomed out, they would cover much of any small card the
+   pointer crossed. */
+.canvas-node-neighbours {
+  top: calc(50% + 7px);
+  visibility: hidden;
+}
+
+.canvas-node[data-focused="true"] > .canvas-node-neighbours {
+  visibility: visible;
+}
+
+.canvas-node-neighbours[data-direction="in"] {
+  left: 0;
+  transform: scale(calc(1 / var(--zoom))) translate(-50%, 4px);
+  transform-origin: 0 0;
+}
+
+.canvas-node-neighbours[data-direction="out"] {
+  right: 0;
+  transform: scale(calc(1 / var(--zoom))) translate(50%, 4px);
+  transform-origin: 100% 0;
+}
+
+/* The button that enlarges the card sits in its top-left corner, 4 units in
+   from each side, on every card. It is drawn at the card's size up to 100%,
+   and stays 28 px on screen past that, so it always fits in 36 units. Every
+   card's first line starts 36 units in, so the button covers none of its text,
+   however long the title is: the title, a text card's header, or the text's
+   first line, which an empty float pushes right. */
+.canvas-node-enlarge {
+  top: 0;
+  left: 0;
+  transform: scale(calc(1 / max(1, var(--zoom)))) translate(4px, 4px);
+  transform-origin: 0 0;
+}
+
+.canvas-node > :is(.canvas-node-title, .canvas-node-header) {
+  padding-left: 36px;
+}
+
+.canvas-node > .canvas-node-content:first-child::before {
+  content: '';
+  float: left;
+  width: 20px;
+  height: 22px;
+}
+
+/* A list's markers, a quote's bar and a rule sit left of the text the float
+   pushes right, so they start below the float, and so below the button. */
+.canvas-node > .canvas-node-content:first-child > .markdown-preview > :is(ul, ol, blockquote, hr) {
+  clear: left;
+}
+
+/* The bar in a preview's top-right corner, with the button that flies to its
+   card. It stays one size on screen at any zoom. Its corner sits on the
+   preview's outer corner, past the 1 px border, and is moved 4 px inwards on
+   screen. */
 .canvas-node-bar {
   position: absolute;
-  top: calc(var(--enlarge-top, 0px) - 1px);
-  right: calc(var(--enlarge-right, 0px) - 1px);
+  top: -1px;
+  right: -1px;
   display: flex;
   gap: 4px;
-  visibility: hidden;
   transform: scale(calc(1 / var(--zoom))) translate(-4px, 4px);
   transform-origin: 100% 0;
 }
 
-.canvas-node[data-focused="true"] .canvas-node-bar,
-.canvas-neighbour .canvas-node-bar {
-  visibility: visible;
-}
-
-.canvas-node-bar button {
+.canvas-node-bar button,
+.canvas-node-button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -249,7 +304,7 @@
   color: var(--text-accent);
 }
 
-.canvas-node-bar .canvas-node-title-icon {
+:is(.canvas-node-bar, .canvas-node-button) .canvas-node-title-icon {
   width: 16px;
   height: 16px;
   opacity: 1;
@@ -765,7 +820,6 @@
 }
 
 .canvas-node-neighbours {
-  padding: 0 6px;
   font-family: inherit;
   font-size: 12px;
 }

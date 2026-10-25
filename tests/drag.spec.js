@@ -6,7 +6,8 @@ test('with Grid on, a dragged card lands on the 20 px grid', async ({ page }) =>
 
   // A board this small opens at zoom 1, so a screen pixel is a canvas unit.
   const header = await page.locator('.canvas-node-header').boundingBox()
-  const pressX = header.x + 10
+  // The middle of the header, clear of the enlarge button in its corner.
+  const pressX = header.x + header.width / 2
   const pressY = header.y + 5
   await page.mouse.move(pressX, pressY)
   await page.mouse.down()
@@ -25,7 +26,8 @@ test('a press on a text card body, or on a card without a header, moves nothing'
   const body = await page.locator('.canvas-node-content').first().boundingBox()
   await dragBy(page, body.x + 20, body.y + 10, 50, 50)
   const headerless = await page.locator('.canvas-node').nth(1).boundingBox()
-  await dragBy(page, headerless.x + 20, headerless.y + 10, 50, 50)
+  // The middle of the card, clear of the enlarge button in its corner.
+  await dragBy(page, headerless.x + headerless.width / 2, headerless.y + headerless.height / 2, 50, 50)
 
   const after = await boxes(page)
   expect(after).toEqual({ a: [0, 0, 200, 100], s: [300, 0, 200, 100] })
@@ -80,7 +82,8 @@ test('at zoom 0.5, a drag moves a card two units per pixel and leaves the view',
   await page.evaluate(() => zoomAt(0, 0, 0.5))
   const viewBefore = await page.evaluate(() => ({ ...view }))
   const header = await page.locator('.canvas-node-header').boundingBox()
-  await dragBy(page, header.x + 5, header.y + 5, 50, 25)
+  // The middle of the header, clear of the enlarge button in its corner.
+  await dragBy(page, header.x + header.width / 2, header.y + 5, 50, 25)
 
   const after = await boxes(page)
   expect(after).toEqual({ a: [100, 50, 200, 100] })
@@ -98,7 +101,8 @@ test('a dragged card re-routes its edges and grows the edge layer', async ({ pag
   await expect(layer).toHaveAttribute('height', '900')
 
   const header = await page.locator('.canvas-node-header').first().boundingBox()
-  await dragBy(page, header.x + 5, header.y + 5, 0, 200)
+  // The middle of the header, clear of the enlarge button in its corner.
+  await dragBy(page, header.x + header.width / 2, header.y + 5, 0, 200)
 
   // From A's right side, now 200 units lower, to B's left side.
   await expect(page.locator('.canvas-edge-line')).toHaveAttribute('d', /^M 200 250 C .* 400 50$/)

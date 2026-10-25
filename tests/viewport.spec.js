@@ -42,7 +42,8 @@ test('the fit zooms below 0.1 when the board needs it, and the zoom buttons go o
 test('Fit fits the board as a drag left it', async ({ page }) => {
   await openBoard(page, { nodes: [textCard('a', 0, 0, 'A\nbody'), textCard('b', 400, 0, 'B\nbody')] })
   const header = await page.locator('.canvas-node-header').first().boundingBox()
-  await dragBy(page, header.x + 5, header.y + 5, 0, 200)
+  // The middle of the header, clear of the enlarge button in its corner.
+  await dragBy(page, header.x + header.width / 2, header.y + 5, 0, 200)
   await page.locator('#zoom-fit').click()
 
   const fitted = await page.evaluate(() => ({ ...view }))
