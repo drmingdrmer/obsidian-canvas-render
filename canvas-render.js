@@ -6,8 +6,6 @@
  * An ES module: `mount` draws the board inside an element of any page.
  */
 
-import { createBoard } from './src/board.js'
-
 // ---------------------------------------------------------------- constants
 
 /** The folder this module is served from, which holds its stylesheets and the renderer's own page. */
@@ -27,6 +25,18 @@ const LIBRARIES = [
   ['marked', 'lib/marked.min.js'],
   ['katex', 'lib/katex/katex.min.js'],
   ['DOMPurify', 'lib/purify.min.js'],
+]
+
+/**
+ * The modules in src/, as paths relative to this module. A module names its
+ * imports only once it has arrived, so importing src/board.js alone takes one
+ * round of requests for it and another for the modules it imports. `mount`
+ * asks for all of them at once instead, along with the libraries.
+ */
+const MODULES = [
+  'src/board.js', 'src/cards.js', 'src/dragging.js', 'src/elements.js', 'src/geometry.js',
+  'src/layout.js', 'src/margins.js', 'src/markdown.js', 'src/model.js', 'src/navigation.js',
+  'src/neighbours.js', 'src/page.js', 'src/reading.js', 'src/resources.js', 'src/viewport.js',
 ]
 
 /**
@@ -83,6 +93,16 @@ function loadAssets(shadowRoot) {
   return Promise.all(loads)
 }
 
+/** Asks for every module in src/, so that importing src/board.js finds each one loaded or on its way. */
+function preloadModules() {
+  for (const path of MODULES) {
+    const linkEl = document.createElement('link')
+    linkEl.rel = 'modulepreload'
+    linkEl.href = new URL(path, APP_URL).href
+    document.head.append(linkEl)
+  }
+}
+
 /**
  * Draws a board inside `el`, in a shadow root, which keeps the page's styles
  * and the board's apart. A page shows one board.
@@ -101,11 +121,19 @@ export async function mount(el, params) {
   if (hostEl !== null) throw new Error('mount draws one board per page, and this page has one')
   const shadowRoot = el.attachShadow({ mode: 'open' })
   hostEl = el
+  preloadModules()
+  const assetsLoaded = loadAssets(shadowRoot)
+  const boardLoaded = import('./src/board.js')
+  // The modules and the assets load side by side. Waiting on both at once keeps
+  // an asset that fails before the board arrives from being reported as an
+  // unhandled rejection; the board shows that failure once it is created.
+  await Promise.allSettled([assetsLoaded, boardLoaded])
+  const { createBoard } = await boardLoaded
   const ownsPage = params === undefined
   const board = createBoard(el, ownsPage, APP_URL, REMOTE_HOSTS)
   const query = ownsPage ? window.location.search : params
   try {
-    await loadAssets(shadowRoot)
+    await assetsLoaded
     shadowRoot.append(board.boardFragment)
     await board.main(new URLSearchParams(query), { marked, katex, DOMPurify })
   } catch (error) {

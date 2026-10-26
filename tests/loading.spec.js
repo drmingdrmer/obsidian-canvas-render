@@ -46,6 +46,56 @@ test('the demo board, served by serve.sh, draws every card and edge, and loads e
   }
 })
 
+test('the page asks for every module in src/ and every library before src/board.js arrives', async ({ page }) => {
+  const modules = fs.readdirSync(path.join(__dirname, '..', 'src')).map(name => `/src/${name}`)
+  const libraries = ['/lib/marked.min.js', '/lib/katex/katex.min.js', '/lib/purify.min.js']
+  const requested = new Set()
+  page.on('request', request => {
+    const { pathname } = new URL(request.url())
+    if (pathname.endsWith('.js') && pathname !== '/canvas-render.js') requested.add(pathname)
+  })
+
+  // A module that only an import of src/board.js names stays unasked while
+  // src/board.js is held back.
+  let release
+  const held = new Promise(resolve => {
+    release = resolve
+  })
+  await serveApp(page)
+  await page.route(`${ORIGIN}src/board.js`, async route => {
+    await held
+    await route.fallback()
+  })
+  await page.route('**/board/board.canvas', route => route.fulfill({ json: { nodes: [textCard('a', 0, 0, 'A')] } }))
+  // The page does not finish loading while src/board.js is held back.
+  await page.goto(`${ORIGIN}?canvas=board/board.canvas`, { waitUntil: 'commit' })
+
+  const expected = [...modules, ...libraries].sort()
+  await expect.poll(() => [...requested].sort()).toEqual(expected)
+  release()
+  await expect(page.locator('.canvas-node')).toHaveCount(1)
+})
+
+test('a library that fails to load before src/board.js arrives shows why in the status line', async ({ page, expectedErrors }) => {
+  const libraryUrl = `${ORIGIN}lib/marked.min.js`
+  expectedErrors.push(`HTTP 404 ${libraryUrl}`)
+  // A script's error event does not bubble, so this catches it on its way down from the window.
+  await page.addInitScript(() => {
+    window.addEventListener('error', event => {
+      if (event.target.src?.endsWith('/lib/marked.min.js')) window.libraryFailed = true
+    }, true)
+  })
+  await serveApp(page)
+  await page.route(libraryUrl, route => route.fulfill({ status: 404 }))
+  await page.route(`${ORIGIN}src/board.js`, async route => {
+    await page.waitForFunction(() => window.libraryFailed)
+    await route.fallback()
+  })
+  await page.goto(ORIGIN, { waitUntil: 'commit' })
+
+  await expect(page.locator('#status')).toHaveText(`Cannot load ${libraryUrl}`)
+})
+
 test('a canvas on raw.githubusercontent.com reads its notes from beside it', async ({ page }) => {
   const base = 'https://raw.githubusercontent.com/u/r/main/b/'
   const cors = { 'access-control-allow-origin': '*' }
